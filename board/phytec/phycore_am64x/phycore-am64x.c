@@ -19,11 +19,6 @@
 
 DECLARE_GLOBAL_DATA_PTR;
 
-int board_init(void)
-{
-	return 0;
-}
-
 static u8 phytec_get_am64_ddr_size_default(void)
 {
 	int ret;
@@ -71,7 +66,7 @@ int dram_init_banksize(void)
 {
 	u8 ram_size;
 
-	memset(gd->bd->bi_dram, 0, sizeof(gd->bd->bi_dram[0]) * CONFIG_NR_DRAM_BANKS);
+	memset(gd->dram, 0, sizeof(gd->dram[0]) * CONFIG_NR_DRAM_BANKS);
 
 	if (!IS_ENABLED(CONFIG_CPU_V7R))
 		return fdtdec_setup_memory_banksize();
@@ -79,21 +74,21 @@ int dram_init_banksize(void)
 	ram_size = phytec_get_am64_ddr_size_default();
 	switch (ram_size) {
 	case EEPROM_RAM_SIZE_1GB:
-		gd->bd->bi_dram[0].start = CFG_SYS_SDRAM_BASE;
-		gd->bd->bi_dram[0].size = 0x40000000;
+		gd->dram[0].start = CFG_SYS_SDRAM_BASE;
+		gd->dram[0].size = 0x40000000;
 		gd->ram_size = 0x40000000;
 		break;
 
 	case EEPROM_RAM_SIZE_2GB:
-		gd->bd->bi_dram[0].start = CFG_SYS_SDRAM_BASE;
-		gd->bd->bi_dram[0].size = 0x80000000;
+		gd->dram[0].start = CFG_SYS_SDRAM_BASE;
+		gd->dram[0].size = 0x80000000;
 		gd->ram_size = 0x80000000;
 		break;
 
 	default:
 		/* Continue with default 2GB setup */
-		gd->bd->bi_dram[0].start = CFG_SYS_SDRAM_BASE;
-		gd->bd->bi_dram[0].size = 0x80000000;
+		gd->dram[0].start = CFG_SYS_SDRAM_BASE;
+		gd->dram[0].size = 0x80000000;
 		gd->ram_size = 0x80000000;
 		printf("DDR size %d is not supported\n", ram_size);
 	}
@@ -114,8 +109,8 @@ int do_board_detect(void)
 	dram_init_banksize();
 
 	for (bank = 0; bank < CONFIG_NR_DRAM_BANKS; bank++) {
-		start[bank] = gd->bd->bi_dram[bank].start;
-		size[bank] = gd->bd->bi_dram[bank].size;
+		start[bank] = gd->dram[bank].start;
+		size[bank] = gd->dram[bank].size;
 	}
 
 	return fdt_fixup_memory_banks(fdt, start, size, CONFIG_NR_DRAM_BANKS);
@@ -123,7 +118,7 @@ int do_board_detect(void)
 #endif
 
 #if IS_ENABLED(CONFIG_XPL_BUILD)
-void spl_perform_fixups(struct spl_image_info *spl_image)
+void spl_perform_board_fixups(struct spl_image_info *spl_image)
 {
 	if (IS_ENABLED(CONFIG_K3_DDRSS) && IS_ENABLED(CONFIG_K3_INLINE_ECC))
 		fixup_ddr_driver_for_ecc(spl_image);

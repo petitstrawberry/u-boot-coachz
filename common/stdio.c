@@ -18,10 +18,7 @@
 #include <serial.h>
 #include <splash.h>
 #include <i2c.h>
-#include <asm/global_data.h>
 #include <dm/device-internal.h>
-
-DECLARE_GLOBAL_DATA_PTR;
 
 static struct stdio_dev devs;
 struct stdio_dev *stdio_devices[] = { NULL, NULL, NULL };
@@ -220,27 +217,11 @@ struct stdio_dev *stdio_get_by_name(const char *name)
 	return NULL;
 }
 
-struct stdio_dev *stdio_clone(struct stdio_dev *dev)
-{
-	struct stdio_dev *_dev;
-
-	if (!dev)
-		return NULL;
-
-	_dev = calloc(1, sizeof(struct stdio_dev));
-	if (!_dev)
-		return NULL;
-
-	memcpy(_dev, dev, sizeof(struct stdio_dev));
-
-	return _dev;
-}
-
 int stdio_register_dev(struct stdio_dev *dev, struct stdio_dev **devp)
 {
 	struct stdio_dev *_dev;
 
-	_dev = stdio_clone(dev);
+	_dev = memdup(dev, sizeof(*dev));
 	if (!_dev)
 		return -ENODEV;
 	list_add_tail(&_dev->list, &devs.list);

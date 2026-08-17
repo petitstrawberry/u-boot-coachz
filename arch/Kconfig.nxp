@@ -84,6 +84,28 @@ config SYS_FSL_SFP_VER_3_4
 
 endchoice
 
+config FSL_SEC_MON
+	bool
+	help
+	  Freescale Security Monitor block is responsible for monitoring
+	  system states.
+	  Security Monitor can be transitioned on any security failures,
+	  like software violations or hardware security violations.
+
+choice
+	prompt "Security monitor interaction endianess"
+	depends on FSL_SEC_MON
+	default SYS_FSL_SEC_MON_BE if PPC
+	default SYS_FSL_SEC_MON_LE
+
+config SYS_FSL_SEC_MON_LE
+	bool "Security monitor interactions are little endian"
+
+config SYS_FSL_SEC_MON_BE
+	bool "Security monitor interactions are big endian"
+
+endchoice
+
 config SPL_UBOOT_KEY_HASH
 	string "Non-SRK key hash for U-Boot public/private key pair"
 	depends on SPL
@@ -220,24 +242,28 @@ config VOL_MONITOR_IR36021_SET
 
 config VOL_MONITOR_LTC3882_READ
 	bool "Enable the LTC3882 voltage monitor read"
+	select PMBUS
 	help
 	 This option enables LTC3882 voltage monitor read
 	 functionality. It is used by the common VID driver.
 
 config VOL_MONITOR_LTC3882_SET
 	bool "Enable the LTC3882 voltage monitor set"
+	select PMBUS
 	help
 	 This option enables LTC3882 voltage monitor set
 	 functionality. It is used by the common VID driver.
 
 config VOL_MONITOR_ISL68233_READ
 	bool "Enable the ISL68233 voltage monitor read"
+	select PMBUS
 	help
 	 This option enables ISL68233 voltage monitor read
 	 functionality. It is used by the common VID driver.
 
 config VOL_MONITOR_ISL68233_SET
 	bool "Enable the ISL68233 voltage monitor set"
+	select PMBUS
 	help
 	 This option enables ISL68233 voltage monitor set
 	 functionality. It is used by the common VID driver.

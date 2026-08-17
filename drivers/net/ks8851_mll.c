@@ -347,11 +347,6 @@ static int ks8851_mll_detect_chip(struct ks_net *ks)
 
 	debug("Read back KS8851 id 0x%x\n", val);
 
-	if ((val & 0xfff0) != CIDER_ID) {
-		printf(DRIVERNAME ": Unknown chip ID %04x\n", val);
-		return -1;
-	}
-
 	return 0;
 }
 
@@ -576,11 +571,6 @@ static int ks8851_read_rom_hwaddr(struct udevice *dev)
 	return !is_valid_ethaddr(pdata->enetaddr);
 }
 
-static int ks8851_bind(struct udevice *dev)
-{
-	return device_set_name(dev, dev->name);
-}
-
 static int ks8851_probe(struct udevice *dev)
 {
 	struct ks_net *ks = dev_get_priv(dev);
@@ -620,7 +610,6 @@ U_BOOT_DRIVER(ks8851) = {
 	.name		= "eth_ks8851",
 	.id		= UCLASS_ETH,
 	.of_match	= ks8851_ids,
-	.bind		= ks8851_bind,
 	.of_to_plat = ks8851_of_to_plat,
 	.probe		= ks8851_probe,
 	.ops		= &ks8851_ops,

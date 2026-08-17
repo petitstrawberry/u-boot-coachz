@@ -36,7 +36,6 @@
 #include <env.h>
 #include <env_internal.h>
 #include <fdtdec.h>
-#include <ide.h>
 #include <init.h>
 #include <initcall.h>
 #include <kgdb.h>
@@ -53,7 +52,6 @@
 #include <pvblock.h>
 #include <scsi.h>
 #include <serial.h>
-#include <status_led.h>
 #include <stdio_dev.h>
 #include <timer.h>
 #include <trace.h>
@@ -145,7 +143,7 @@ static int initr_reloc_global_data(void)
 	 */
 	fixup_cpu();
 #endif
-#ifdef CONFIG_SYS_RELOC_GD_ENV_ADDR
+#ifdef CONFIG_ENV_RELOC_GD_ENV_ADDR
 	/*
 	 * Relocate the early env_addr pointer unless we know it is not inside
 	 * the binary. Some systems need this and for the rest, it doesn't hurt.
@@ -443,9 +441,6 @@ static int should_load_env(void)
 	if (IS_ENABLED(CONFIG_OF_CONTROL))
 		return ofnode_conf_read_int("load-environment", 1);
 
-	if (IS_ENABLED(CONFIG_DELAY_ENVIRONMENT))
-		return 0;
-
 	return 1;
 }
 
@@ -486,17 +481,8 @@ static int initr_malloc_bootparams(void)
 }
 #endif
 
-static int initr_status_led(void)
-{
-	status_led_init();
-
-	return 0;
-}
-
 static int initr_boot_led_blink(void)
 {
-	status_led_boot_blink();
-
 	led_boot_blink();
 
 	return 0;
@@ -509,7 +495,7 @@ static int initr_boot_led_on(void)
 	return 0;
 }
 
-#if CONFIG_IS_ENABLED(NET) || CONFIG_IS_ENABLED(NET_LWIP)
+#if CONFIG_IS_ENABLED(NET)
 static int initr_net(void)
 {
 	puts("Net:   ");
@@ -576,13 +562,6 @@ static int dm_announce(void)
 			printf("Warning: Unexpected devicetree source (not from a prior stage)");
 			printf("Warning: U-Boot may not function properly\n");
 		}
-		if (IS_ENABLED(CONFIG_OF_TAG_MIGRATE) &&
-		    (gd->flags & GD_FLG_OF_TAG_MIGRATE))
-			/*
-			 * U-Boot will silently fail to work after 2023.07 if
-			 * there are old tags present
-			 */
-			printf("Warning: Device tree includes old 'u-boot,dm-' tags: please fix by 2023.07!\n");
 	}
 
 	return 0;
@@ -590,11 +569,15 @@ static int dm_announce(void)
 
 static int run_main_loop(void)
 {
+	int ret;
+
 #ifdef CONFIG_SANDBOX
 	sandbox_main_loop_init();
 #endif
 
-	event_notify_null(EVT_MAIN_LOOP);
+	ret = event_notify_null(EVT_MAIN_LOOP);
+	if (ret)
+		return ret;
 
 	/* main_loop() can return to retry autoboot, if so just run it again */
 	for (;;)
@@ -639,7 +622,7 @@ static void initcall_run_r(void)
 #if CONFIG_IS_ENABLED(CONSOLE_RECORD)
 	INITCALL(console_record_init);
 #endif
-#if CONFIG_IS_ENABLED(SYS_NONCACHED_MEMORY)
+#if CONFIG_IS_ENABLED(SYS_HAS_NONCACHED_MEMORY)
 	INITCALL(noncached_init);
 #endif
 	INITCALL(initr_of_live);
@@ -649,8 +632,7 @@ static void initcall_run_r(void)
 #if CONFIG_IS_ENABLED(ADDR_MAP)
 	INITCALL(init_addr_map);
 #endif
-#if CONFIG_IS_ENABLED(ARM) || CONFIG_IS_ENABLED(RISCV) || \
-    CONFIG_IS_ENABLED(SANDBOX)
+#if CONFIG_IS_ENABLED(BOARD_INIT)
 	INITCALL(board_init);	/* Setup chipselects */
 #endif
 	/*
@@ -705,7 +687,7 @@ static void initcall_run_r(void)
 	INITCALL(initr_flash);
 #endif
 	WATCHDOG_RESET();
-#if CONFIG_IS_ENABLED(PPC) || CONFIG_IS_ENABLED(M68K) || CONFIG_IS_ENABLED(X86)
+#if IS_ENABLED(CONFIG_PPC) || CONFIG_IS_ENABLED(M68K) || CONFIG_IS_ENABLED(X86)
 	/* initialize higher level parts of CPU like time base and timers */
 	INITCALL(cpu_init_r);
 #endif
@@ -770,7 +752,6 @@ static void initcall_run_r(void)
 #if defined(CONFIG_MICROBLAZE) || defined(CONFIG_M68K)
 	INITCALL(timer_init);		/* initialize timer */
 #endif
-	INITCALL(initr_status_led);
 	INITCALL(initr_boot_led_blink);
 	/* PPC has a udelay(20) here dating from 2002. Why? */
 #if CONFIG_IS_ENABLED(BOARD_LATE_INIT)
@@ -779,7 +760,7 @@ static void initcall_run_r(void)
 #if CONFIG_IS_ENABLED(PCI_ENDPOINT)
 	INITCALL(pci_ep_init);
 #endif
-#if CONFIG_IS_ENABLED(NET) || CONFIG_IS_ENABLED(NET_LWIP)
+#if CONFIG_IS_ENABLED(NET)
 	WATCHDOG_RESET();
 	INITCALL(initr_net);
 #endif
@@ -815,7 +796,9 @@ void board_init_r(gd_t *new_gd, ulong dest_addr)
 	if (CONFIG_IS_ENABLED(X86_64) && !IS_ENABLED(CONFIG_EFI_APP))
 		arch_setup_gd(new_gd);
 
-#if !defined(CONFIG_X86) && !defined(CONFIG_ARM) && !defined(CONFIG_ARM64)
+#if defined(CONFIG_RISCV)
+	set_gd(new_gd);
+#elif !defined(CONFIG_X86) && !defined(CONFIG_ARM) && !defined(CONFIG_ARM64)
 	gd = new_gd;
 #endif
 	gd->flags &= ~GD_FLG_LOG_READY;

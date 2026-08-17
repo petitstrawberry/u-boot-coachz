@@ -14,12 +14,9 @@
 #include <sysreset.h>
 #include <time.h>
 #include <wdt.h>
-#include <asm/global_data.h>
 #include <dm/device-internal.h>
 #include <dm/lists.h>
 #include <linux/kernel.h>
-
-DECLARE_GLOBAL_DATA_PTR;
 
 #define WATCHDOG_TIMEOUT_SECS	(CONFIG_WATCHDOG_TIMEOUT_MSECS / 1000)
 
@@ -45,6 +42,15 @@ struct wdt_priv {
 
 	struct cyclic_info cyclic;
 };
+
+int wdt_set_force_autostart(struct udevice *dev)
+{
+	struct wdt_priv *priv = dev_get_uclass_priv(dev);
+
+	priv->autostart = true;
+
+	return 0;
+}
 
 static void wdt_cyclic(struct cyclic_info *c)
 {

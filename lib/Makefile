@@ -5,7 +5,7 @@
 
 ifndef CONFIG_XPL_BUILD
 
-obj-$(CONFIG_EFI) += efi/
+obj-$(CONFIG_EFI_CLIENT) += efi_client/
 obj-$(CONFIG_EFI_LOADER) += efi_driver/
 obj-$(CONFIG_EFI_LOADER) += efi_loader/
 obj-$(CONFIG_CMD_BOOTEFI_SELFTEST) += efi_selftest/
@@ -21,6 +21,8 @@ obj-$(CONFIG_OPTEE_LIB) += optee/
 obj-$(CONFIG_AES) += aes.o
 obj-$(CONFIG_AES) += aes/
 obj-$(CONFIG_$(PHASE_)BINMAN_FDT) += binman.o
+
+obj-$(CONFIG_FW_LOADER) += fw_loader.o
 
 ifndef API_BUILD
 ifneq ($(CONFIG_CHARSET),)
@@ -51,6 +53,7 @@ obj-y += rc4.o
 obj-$(CONFIG_RBTREE)	+= rbtree.o
 obj-$(CONFIG_BITREVERSE) += bitrev.o
 obj-y += list_sort.o
+obj-$(CONFIG_PMBUS) += pmbus.o
 endif
 
 obj-$(CONFIG_$(PHASE_)TPM) += tpm-common.o
@@ -79,6 +82,7 @@ obj-$(CONFIG_$(PHASE_)SHA1_LEGACY) += sha1.o
 obj-$(CONFIG_$(PHASE_)SHA256) += sha256_common.o
 obj-$(CONFIG_$(PHASE_)SHA256_LEGACY) += sha256.o
 obj-$(CONFIG_$(PHASE_)SHA512_LEGACY) += sha512.o
+obj-$(CONFIG_$(PHASE_)SM3) += sm3.o
 
 obj-$(CONFIG_CRYPT_PW) += crypt/
 obj-$(CONFIG_$(PHASE_)ASN1_DECODER_LEGACY) += asn1_decoder.o
@@ -146,6 +150,7 @@ else
 obj-$(CONFIG_$(PHASE_)SPRINTF) += vsprintf.o
 endif
 obj-$(CONFIG_$(PHASE_)STRTO) += strto.o
+obj-$(CONFIG_$(PHASE_)UFS_SUPPORT) += charset.o
 else
 # Main U-Boot always uses the full printf support
 obj-y += vsprintf.o strto.o
@@ -161,7 +166,7 @@ obj-$(CONFIG_LIB_ELF) += elf.o
 
 obj-$(CONFIG_$(PHASE_)SEMIHOSTING) += semihosting.o
 
-obj-$(CONFIG_UTHREAD) += uthread.o
+obj-$(CONFIG_$(PHASE_)UTHREAD) += uthread.o
 
 #
 # Build a fast OID lookup registry from include/linux/oid_registry.h

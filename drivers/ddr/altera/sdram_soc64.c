@@ -29,7 +29,10 @@
 
 #define PGTABLE_OFF	0x4000
 
-#if !IS_ENABLED(CONFIG_TARGET_SOCFPGA_AGILEX5)
+#define SINGLE_RANK_CLAMSHELL	0xc3c3
+#define DUAL_RANK_CLAMSHELL	0xa5a5
+
+#if !IS_ENABLED(CONFIG_ARCH_SOCFPGA_AGILEX5) && !IS_ENABLED(CONFIG_ARCH_SOCFPGA_AGILEX7M)
 u32 hmc_readl(struct altera_sdram_plat *plat, u32 reg)
 {
 	return readl(plat->iomhc + reg);
@@ -82,11 +85,11 @@ int emif_reset(struct altera_sdram_plat *plat)
 	debug("DDR: Triggerring emif reset\n");
 	hmc_ecc_writel(plat, DDR_HMC_CORE2SEQ_INT_REQ, RSTHANDSHAKECTRL);
 
-	/* if seq2core[3] = 0, we are good */
+	/* if seq2core[2:0] = 0b0000_0111, we are good */
 	ret = wait_for_bit_le32((const void *)(plat->hmc +
 				 RSTHANDSHAKESTAT),
-				 DDR_HMC_SEQ2CORE_INT_RESP_MASK,
-				 false, 1000, false);
+				 DDR_HMC_SEQ2CORE_INT_REQ_ACK_MASK,
+				 true, 1000, false);
 	if (ret) {
 		printf("DDR: failed to get ack from EMIF\n");
 		return ret;
@@ -103,7 +106,7 @@ int emif_reset(struct altera_sdram_plat *plat)
 }
 #endif
 
-#if !(IS_ENABLED(CONFIG_TARGET_SOCFPGA_N5X) || IS_ENABLED(CONFIG_TARGET_SOCFPGA_AGILEX5))
+#if !(IS_ENABLED(CONFIG_ARCH_SOCFPGA_N5X) || IS_ENABLED(CONFIG_ARCH_SOCFPGA_AGILEX5))
 int poll_hmc_clock_status(void)
 {
 	return wait_for_bit_le32((const void *)(socfpga_get_sysmgr_addr() +
@@ -147,8 +150,8 @@ void sdram_init_ecc_bits(struct bd_info *bd)
 
 	icache_enable();
 
-	start_addr = bd->bi_dram[0].start;
-	size = bd->bi_dram[0].size;
+	start_addr = gd->dram[0].start;
+	size = gd->dram[0].size;
 
 	/* Initialize small block for page table */
 	memset((void *)start_addr, 0, PGTABLE_SIZE + PGTABLE_OFF);
@@ -171,8 +174,8 @@ void sdram_init_ecc_bits(struct bd_info *bd)
 		if (bank >= CONFIG_NR_DRAM_BANKS)
 			break;
 
-		start_addr = bd->bi_dram[bank].start;
-		size = bd->bi_dram[bank].size;
+		start_addr = gd->dram[bank].start;
+		size = gd->dram[bank].size;
 	}
 
 	dcache_disable();
@@ -195,12 +198,12 @@ void sdram_size_check(struct bd_info *bd)
 		phys_addr_t start = 0;
 		phys_size_t remaining_size;
 
-		start = bd->bi_dram[bank].start;
-		remaining_size = bd->bi_dram[bank].size;
+		start = gd->dram[bank].start;
+		remaining_size = gd->dram[bank].size;
 		debug("Checking bank %d: start=0x%llx, size=0x%llx\n",
 		      bank, start, remaining_size);
 
-		while (ram_check < bd->bi_dram[bank].size) {
+		while (ram_check < gd->dram[bank].size) {
 			phys_size_t size, test_size, detected_size;
 
 			size = min((phys_addr_t)SZ_1G, (phys_addr_t)remaining_size);
@@ -229,7 +232,7 @@ void sdram_size_check(struct bd_info *bd)
 			}
 
 			ram_check += detected_size;
-			remaining_size = bd->bi_dram[bank].size - ram_check;
+			remaining_size = gd->dram[bank].size - ram_check;
 		}
 
 		total_ram_check += ram_check;
@@ -258,8 +261,19 @@ phys_size_t sdram_calculate_size(struct altera_sdram_plat *plat)
 {
 	u32 dramaddrw = hmc_readl(plat, DRAMADDRW);
 
+	u32 reg_ctrlcfg6_value = hmc_readl(plat, CTRLCFG6);
+	u32 cs_rank = CTRLCFG6_CFG_CS_CHIP(reg_ctrlcfg6_value);
+	u32 cs_addr_width;
+
+	if (cs_rank == SINGLE_RANK_CLAMSHELL)
+		cs_addr_width = 0;
+	else if (cs_rank == DUAL_RANK_CLAMSHELL)
+		cs_addr_width = 1;
+	else
+		cs_addr_width = DRAMADDRW_CFG_CS_ADDR_WIDTH(dramaddrw);
+
 	phys_size_t size = (phys_size_t)1 <<
-			(DRAMADDRW_CFG_CS_ADDR_WIDTH(dramaddrw) +
+			(cs_addr_width +
 			 DRAMADDRW_CFG_BANK_GRP_ADDR_WIDTH(dramaddrw) +
 			 DRAMADDRW_CFG_BANK_ADDR_WIDTH(dramaddrw) +
 			 DRAMADDRW_CFG_ROW_ADDR_WIDTH(dramaddrw) +
@@ -278,10 +292,10 @@ static void sdram_set_firewall_non_f2sdram(struct bd_info *bd)
 	u32 lower, upper;
 
 	for (i = 0; i < CONFIG_NR_DRAM_BANKS; i++) {
-		if (!bd->bi_dram[i].size)
+		if (!gd->dram[i].size)
 			continue;
 
-		value = bd->bi_dram[i].start;
+		value = gd->dram[i].start;
 
 		/* Keep first 1MB of SDRAM memory region as secure region when
 		 * using ATF flow, where the ATF code is located.
@@ -308,7 +322,7 @@ static void sdram_set_firewall_non_f2sdram(struct bd_info *bd)
 				      (i * 4 * sizeof(u32)));
 
 		/* Setting non-secure MPU limit and limit extended */
-		value = bd->bi_dram[i].start + bd->bi_dram[i].size - 1;
+		value = gd->dram[i].start + gd->dram[i].size - 1;
 
 		lower = lower_32_bits(value);
 		upper = upper_32_bits(value);
@@ -333,17 +347,17 @@ static void sdram_set_firewall_non_f2sdram(struct bd_info *bd)
 	}
 }
 
-#if IS_ENABLED(CONFIG_TARGET_SOCFPGA_AGILEX5)
+#if IS_ENABLED(CONFIG_ARCH_SOCFPGA_AGILEX5)
 static void sdram_set_firewall_f2sdram(struct bd_info *bd)
 {
 	u32 i, lower, upper;
 	phys_size_t value;
 
 	for (i = 0; i < CONFIG_NR_DRAM_BANKS; i++) {
-		if (!bd->bi_dram[i].size)
+		if (!gd->dram[i].size)
 			continue;
 
-		value = bd->bi_dram[i].start;
+		value = gd->dram[i].start;
 
 		/* Keep first 1MB of SDRAM memory region as secure region when
 		 * using ATF flow, where the ATF code is located.
@@ -362,7 +376,7 @@ static void sdram_set_firewall_f2sdram(struct bd_info *bd)
 					  (i * 4 * sizeof(u32)));
 
 		/* Setting limit and limit extended */
-		value = bd->bi_dram[i].start + bd->bi_dram[i].size - 1;
+		value = gd->dram[i].start + gd->dram[i].size - 1;
 
 		lower = lower_32_bits(value);
 		upper = upper_32_bits(value);
@@ -383,22 +397,22 @@ void sdram_set_firewall(struct bd_info *bd)
 {
 	sdram_set_firewall_non_f2sdram(bd);
 
-#if IS_ENABLED(CONFIG_TARGET_SOCFPGA_AGILEX5)
+#if IS_ENABLED(CONFIG_ARCH_SOCFPGA_AGILEX5)
 	sdram_set_firewall_f2sdram(bd);
 #endif
 }
 
 static int altera_sdram_of_to_plat(struct udevice *dev)
 {
-#if !IS_ENABLED(CONFIG_TARGET_SOCFPGA_N5X)
+#if !IS_ENABLED(CONFIG_ARCH_SOCFPGA_N5X)
 	struct altera_sdram_plat *plat = dev_get_plat(dev);
 	fdt_addr_t addr;
 #endif
 
 	/* These regs info are part of DDR handoff in bitstream */
-#if IS_ENABLED(CONFIG_TARGET_SOCFPGA_N5X)
+#if IS_ENABLED(CONFIG_ARCH_SOCFPGA_N5X)
 	return 0;
-#elif IS_ENABLED(CONFIG_TARGET_SOCFPGA_AGILEX5)
+#elif IS_ENABLED(CONFIG_ARCH_SOCFPGA_AGILEX5) || IS_ENABLED(CONFIG_ARCH_SOCFPGA_AGILEX7M)
 	addr = dev_read_addr_index(dev, 0);
 	if (addr == FDT_ADDR_T_NONE)
 		return -EINVAL;
@@ -467,6 +481,7 @@ static const struct udevice_id altera_sdram_ids[] = {
 	{ .compatible = "intel,sdr-ctl-agilex" },
 	{ .compatible = "intel,sdr-ctl-n5x" },
 	{ .compatible = "intel,sdr-ctl-agilex5" },
+	{ .compatible = "intel,sdr-ctl-agilex7m" },
 	{ /* sentinel */ }
 };
 

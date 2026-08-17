@@ -289,6 +289,9 @@ struct spl_image_info {
 #if CONFIG_IS_ENABLED(LOAD_FIT) || CONFIG_IS_ENABLED(LOAD_FIT_FULL)
 	void *fdt_addr;
 #endif
+#if defined(CONFIG_BOOTM_OPTEE) && defined(CONFIG_ARM) && !defined(CONFIG_ARM64)
+	ulong optee_addr;
+#endif
 	u32 boot_device;
 	u32 offset;
 	u32 size;
@@ -865,7 +868,7 @@ int spl_load_image_fat_os(struct spl_image_info *spl_image,
 			  struct spl_boot_device *bootdev,
 			  struct blk_desc *block_dev, int partition);
 
-void __noreturn jump_to_image_no_args(struct spl_image_info *spl_image);
+void __noreturn jump_to_image(struct spl_image_info *spl_image);
 
 /* SPL EXT image functions */
 int spl_load_image_ext(struct spl_image_info *spl_image,
@@ -878,6 +881,12 @@ int spl_load_image_ext_os(struct spl_image_info *spl_image,
 int spl_blk_load_image(struct spl_image_info *spl_image,
 		       struct spl_boot_device *bootdev,
 		       enum uclass_id uclass_id, int devnum, int partnum);
+
+/* SPL SQUASHFS image functions */
+int spl_load_image_sqfs(struct spl_image_info *spl_image,
+			struct spl_boot_device *bootdev,
+			struct blk_desc *block_dev, int partition,
+			const char *filename);
 
 /**
  * spl_early_init() - Set up device tree and driver model in SPL if enabled
@@ -1116,10 +1125,16 @@ int board_return_to_bootrom(struct spl_image_info *spl_image,
 ulong board_spl_fit_size_align(ulong size);
 
 /**
- * spl_perform_fixups() - arch/board-specific callback before processing
- *                        the boot-payload
+ * spl_perform_arch_fixups() - arch specific callback before processing the
+ *                        boot-payload
  */
-void spl_perform_fixups(struct spl_image_info *spl_image);
+void spl_perform_arch_fixups(struct spl_image_info *spl_image);
+
+/**
+ * spl_perform_board_fixups() - board specific callback before processing the
+ *                        boot-payload
+ */
+void spl_perform_board_fixups(struct spl_image_info *spl_image);
 
 /*
  * spl_get_load_buffer() - get buffer for loading partial image data

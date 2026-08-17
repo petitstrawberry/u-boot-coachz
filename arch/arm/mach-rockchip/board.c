@@ -35,7 +35,8 @@
 #include <asm/arch-rockchip/periph.h>
 #include <power/regulator.h>
 
-#if IS_ENABLED(CONFIG_EFI_HAVE_CAPSULE_SUPPORT) && IS_ENABLED(CONFIG_EFI_PARTITION)
+#if IS_ENABLED(CONFIG_EFI_HAVE_CAPSULE_SUPPORT) && IS_ENABLED(CONFIG_EFI_PARTITION) && \
+	IS_ENABLED(CONFIG_PARTITION_TYPE_GUID)
 
 #define DFU_ALT_BUF_LEN			SZ_1K
 
@@ -193,7 +194,8 @@ int board_late_init(void)
 {
 	setup_boot_mode();
 
-#if IS_ENABLED(CONFIG_EFI_HAVE_CAPSULE_SUPPORT) && IS_ENABLED(CONFIG_EFI_PARTITION)
+#if IS_ENABLED(CONFIG_EFI_HAVE_CAPSULE_SUPPORT) && IS_ENABLED(CONFIG_EFI_PARTITION) && \
+	IS_ENABLED(CONFIG_PARTITION_TYPE_GUID)
 	gpt_capsule_update_setup();
 #endif
 
@@ -512,8 +514,8 @@ int mmc_get_env_dev(void)
 	const char *boot_device;
 	struct udevice *dev;
 
-#ifdef CONFIG_SYS_MMC_ENV_DEV
-	devnum = CONFIG_SYS_MMC_ENV_DEV;
+#ifdef CONFIG_ENV_MMC_DEVICE_INDEX
+	devnum = CONFIG_ENV_MMC_DEVICE_INDEX;
 #else
 	devnum = 0;
 #endif

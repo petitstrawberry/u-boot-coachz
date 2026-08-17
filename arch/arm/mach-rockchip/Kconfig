@@ -8,12 +8,10 @@ config ROCKCHIP_PX30
 	select SUPPORT_TPL
 	select SPL
 	select TPL
-	select TPL_TINY_FRAMEWORK if TPL
 	select TPL_HAVE_INIT_STACK if TPL
 	imply SPL_SEPARATE_BSS
-	select SPL_SERIAL
-	select TPL_SERIAL
-	select DEBUG_UART_BOARD_INIT
+	imply SPL_SERIAL
+	imply TPL_SERIAL
 	imply ROCKCHIP_COMMON_BOARD
 	imply ROCKCHIP_COMMON_STACK_ADDR
 	imply SPL_ROCKCHIP_COMMON_BOARD
@@ -67,6 +65,7 @@ config ROCKCHIP_RK3066
 config ROCKCHIP_RK3128
 	bool "Support Rockchip RK3128"
 	select CPU_V7A
+	imply OF_UPSTREAM
 	imply ROCKCHIP_COMMON_BOARD
 	help
 	  The Rockchip RK3128 is a ARM-based SoC with a quad-core Cortex-A7
@@ -77,7 +76,6 @@ config ROCKCHIP_RK3128
 config ROCKCHIP_RK3188
 	bool "Support Rockchip RK3188"
 	select CPU_V7A
-	select SPL_BOARD_INIT if SPL
 	select SUPPORT_SPL
 	select SPL
 	select SPL_CLK
@@ -111,6 +109,7 @@ config ROCKCHIP_RK322X
 	select TPL_OF_LIBFDT
 	select TPL_HAVE_INIT_STACK if TPL
 	select SPL_DRIVERS_MISC
+	imply OF_UPSTREAM
 	imply ROCKCHIP_COMMON_BOARD
 	imply SPL_SERIAL
 	imply SPL_ROCKCHIP_COMMON_BOARD
@@ -134,6 +133,7 @@ config ROCKCHIP_RK3288
 	select SPL
 	select SUPPORT_TPL
 	select FDT_64BIT
+	imply OF_UPSTREAM
 	imply PRE_CONSOLE_BUFFER
 	imply ROCKCHIP_COMMON_BOARD
 	imply SPL_ROCKCHIP_COMMON_BOARD
@@ -286,7 +286,7 @@ config ROCKCHIP_RK3399
 	imply OF_LIBFDT_OVERLAY
 	imply OF_LIVE
 	imply OF_UPSTREAM
-	imply PARTITION_TYPE_GUID
+	imply PARTITION_TYPE_GUID if EFI_PARTITION
 	imply PHY_GIGE if GMAC_ROCKCHIP
 	imply PRE_CONSOLE_BUFFER
 	imply RNG_ROCKCHIP
@@ -318,6 +318,49 @@ config ROCKCHIP_RK3399
 	  video interfaces supporting HDMI and eDP, several DDR3 options
 	  and video codec support. Peripherals include Gigabit Ethernet,
 	  USB2 host and OTG, SDIO, I2S, UARTs, SPI, I2C and PWMs.
+
+config ROCKCHIP_RK3506
+	bool "Support Rockchip RK3506"
+	select CPU_V7A
+	select SUPPORT_SPL
+	select SPL
+	select CLK
+	select PINCTRL
+	select RAM
+	select REGMAP
+	select SYSCON
+	select BOARD_LATE_INIT
+	select DM_REGULATOR_FIXED
+	select DM_RESET
+	imply BOOTSTD_FULL
+	imply DM_RNG
+	imply ENV_RELOC_GD_ENV_ADDR
+	imply FIT
+	imply LEGACY_IMAGE_FORMAT
+	imply MISC
+	imply MISC_INIT_R
+	imply OF_LIBFDT_OVERLAY
+	imply OF_LIVE
+	imply RNG_ROCKCHIP
+	imply ROCKCHIP_COMMON_BOARD
+	imply ROCKCHIP_COMMON_STACK_ADDR
+	imply ROCKCHIP_EXTERNAL_TPL
+	imply ROCKCHIP_OTP
+	imply SPL_ARMV7_SET_CORTEX_SMPEN
+	imply SPL_CLK
+	imply SPL_DM_SEQ_ALIAS
+	imply SPL_FIT_SIGNATURE
+	imply SPL_LOAD_FIT
+	imply SPL_OF_CONTROL
+	imply SPL_PINCTRL
+	imply SPL_RAM
+	imply SPL_REGMAP
+	imply SPL_SERIAL
+	imply SPL_SYSCON
+	imply SYS_ARCH_TIMER
+	imply SYSRESET
+	help
+	  The Rockchip RK3506 is a ARM-based SoC with a tri-core Cortex-A7.
 
 config ROCKCHIP_RK3528
 	bool "Support Rockchip RK3528"
@@ -363,7 +406,7 @@ config ROCKCHIP_RK3528
 	imply SPL_REGMAP
 	imply SPL_SERIAL
 	imply SPL_SYSCON
-	imply SYS_RELOC_GD_ENV_ADDR
+	imply ENV_RELOC_GD_ENV_ADDR
 	imply SYSRESET
 	imply SYSRESET_PSCI if SPL_ATF
 	help
@@ -447,7 +490,7 @@ config ROCKCHIP_RK3576
 	imply SPL_REGMAP
 	imply SPL_SERIAL
 	imply SPL_SYSCON
-	imply SYS_RELOC_GD_ENV_ADDR
+	imply ENV_RELOC_GD_ENV_ADDR
 	imply SYSRESET
 	help
 	  The Rockchip RK3576 is a ARM-based SoC with quad-core Cortex-A72 and
@@ -564,8 +607,8 @@ config SPL_ROCKCHIP_BACK_TO_BROM
 	depends on SPL
 	help
 	  Rockchip SoCs have ability to load SPL & U-Boot binary. If enabled,
-          SPL will return to the boot rom, which will then load the U-Boot
-          binary to keep going on.
+	  SPL will return to the boot rom, which will then load the U-Boot
+	  binary to keep going on.
 
 config TPL_ROCKCHIP_BACK_TO_BROM
 	bool "TPL returns to bootrom"
@@ -575,8 +618,8 @@ config TPL_ROCKCHIP_BACK_TO_BROM
 	depends on TPL
 	help
 	  Rockchip SoCs have ability to load SPL & U-Boot binary. If enabled,
-          SPL will return to the boot rom, which will then load the U-Boot
-          binary to keep going on.
+	  SPL will return to the boot rom, which will then load the U-Boot
+	  binary to keep going on.
 
 config ROCKCHIP_COMMON_BOARD
 	bool "Rockchip common board file"
@@ -618,7 +661,7 @@ config ROCKCHIP_BOOT_MODE_REG
 config ROCKCHIP_RK8XX_DISABLE_BOOT_ON_POWERON
 	bool "Disable device boot on power plug-in"
 	depends on PMIC_RK8XX
-	---help---
+	help
 	  Say Y here to prevent the device from booting up because of a plug-in
 	  event. When set, the device will boot briefly to determine why it was
 	  powered on, and if it was determined because of a plug-in event
@@ -646,7 +689,7 @@ config ROCKCHIP_BROM_HELPER
 	bool
 
 config SPL_ROCKCHIP_EARLYRETURN_TO_BROM
-        bool "SPL requires early-return (for RK3188-style BROM) to BROM"
+	bool "SPL requires early-return (for RK3188-style BROM) to BROM"
 	depends on SPL && ENABLE_ARM_SOC_BOOT0_HOOK
 	help
 	  Some Rockchip BROM variants (e.g. on the RK3188) load the
@@ -667,7 +710,7 @@ config ROCKCHIP_DISABLE_FORCE_JTAG
 	  Rockchip SoCs can automatically switch between jtag and sdmmc based
 	  on the following rules:
 	  - all the SDMMC pins including SDMMC_DET set as SDMMC function in
-	    GRF,
+	  GRF,
 	  - force_jtag bit in GRF is 1,
 	  - SDMMC_DET is low (no card detected),
 
@@ -684,7 +727,7 @@ config ROCKCHIP_DISABLE_FORCE_JTAG
 	  If unsure, say Y.
 
 config TPL_ROCKCHIP_EARLYRETURN_TO_BROM
-        bool "TPL requires early-return (for RK3188-style BROM) to BROM"
+	bool "TPL requires early-return (for RK3188-style BROM) to BROM"
 	depends on TPL && ENABLE_ARM_SOC_BOOT0_HOOK
 	help
 	  Some Rockchip BROM variants (e.g. on the RK3188) load the
@@ -706,6 +749,14 @@ config ROCKCHIP_SPI_IMAGE
 	  Some Rockchip SoCs support booting from SPI flash. Enable this
 	  option to produce a SPI-flash image containing U-Boot. The image
 	  is built by binman. U-Boot sits near the start of the image.
+
+config ROCKCHIP_MASKROM_IMAGE
+	bool "Build a maskrom mode image for Rockchip"
+	depends on TPL || ROCKCHIP_EXTERNAL_TPL
+	select SPL_RAM_DEVICE
+	help
+	  Rockchip SoCs support maskrom mode boot over USB. Enable this
+	  option to produce maskrom mode boot images containing U-Boot.
 
 config LNX_KRNL_IMG_TEXT_OFFSET_BASE
 	default TEXT_BASE
@@ -739,6 +790,7 @@ source "arch/arm/mach-rockchip/rk3308/Kconfig"
 source "arch/arm/mach-rockchip/rk3328/Kconfig"
 source "arch/arm/mach-rockchip/rk3368/Kconfig"
 source "arch/arm/mach-rockchip/rk3399/Kconfig"
+source "arch/arm/mach-rockchip/rk3506/Kconfig"
 source "arch/arm/mach-rockchip/rk3528/Kconfig"
 source "arch/arm/mach-rockchip/rk3568/Kconfig"
 source "arch/arm/mach-rockchip/rk3576/Kconfig"
@@ -769,9 +821,9 @@ config TPL_SYS_MALLOC_F_LEN
 	default 0x4000 if CUSTOM_SYS_INIT_SP_ADDR = 0x03f00000
 
 config TEXT_BASE
-	default 0x60200000 if SPL_TEXT_BASE = 0x60000000
-	default 0x40200000 if SPL_TEXT_BASE = 0x40000000
-	default 0x00200000 if SPL_TEXT_BASE = 0x00000000
+	default 0x60800000 if SPL_TEXT_BASE = 0x60000000
+	default 0x40800000 if SPL_TEXT_BASE = 0x40000000
+	default 0x00800000 if SPL_TEXT_BASE = 0x00000000
 
 config SPL_TEXT_BASE
 	default 0x60000000 if ROCKCHIP_RK3036 || ROCKCHIP_RK3066 || \

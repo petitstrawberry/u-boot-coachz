@@ -7,12 +7,9 @@
 
 #include <dm.h>
 #include <errno.h>
-#include <asm/global_data.h>
 #include <asm/io.h>
 #include "pinctrl-nexell.h"
 #include "pinctrl-s5pxx18.h"
-
-DECLARE_GLOBAL_DATA_PTR;
 
 /* given a pin-name, return the address of pin config registers */
 unsigned long pin_to_bank_base(struct udevice *dev, const char *pin_name,
@@ -52,7 +49,7 @@ int nexell_pinctrl_probe(struct udevice *dev)
 	if (!priv)
 		return -EINVAL;
 
-	base = devfdt_get_addr(dev);
+	base = dev_read_addr(dev);
 	if (base == FDT_ADDR_T_NONE)
 		return -EINVAL;
 

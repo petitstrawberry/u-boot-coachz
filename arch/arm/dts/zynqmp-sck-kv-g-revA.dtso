@@ -3,7 +3,7 @@
  * dts file for KV260 revA Carrier Card
  *
  * (C) Copyright 2020 - 2022, Xilinx, Inc.
- * (C) Copyright 2022 - 2023, Advanced Micro Devices, Inc.
+ * (C) Copyright 2022 - 2026, Advanced Micro Devices, Inc.
  *
  * SD level shifter:
  * "A" - A01 board un-modified (NXP)
@@ -30,11 +30,6 @@
 
 	aliases {
 		ethernet0 = "/axi/ethernet@ff0e0000"; /* &gem3 */
-	};
-
-	ina260-u14 {
-		compatible = "iio-hwmon";
-		io-channels = <&u14 0>, <&u14 1>, <&u14 2>;
 	};
 
 	si5332_0: si5332-0 { /* u17 */
@@ -72,6 +67,42 @@
 		#clock-cells = <0>;
 		clock-frequency = <27000000>;
 	};
+	dpcon {
+		compatible = "dp-connector";
+		label = "P11";
+		type = "full-size";
+
+		port {
+			dpcon_in: endpoint {
+				remote-endpoint = <&dpsub_dp_out>;
+			};
+		};
+	};
+
+	slg_delay: enable-delay {
+		compatible = "gpio-delay";
+		#gpio-cells = <3>;
+		gpio-controller;
+		gpios = <&gpio 44 GPIO_ACTIVE_LOW>;
+	};
+
+	vdd_usb_hub: regulator-vdd-usb-hub {
+		compatible = "regulator-fixed";
+		regulator-name = "vdd_usb_hub";
+		regulator-min-microvolt = <3300000>;
+		regulator-max-microvolt = <3300000>;
+		regulator-always-on;
+		regulator-boot-on;
+	};
+
+	vdd2_usb_hub: regulator-vdd2-usb-hub {
+		compatible = "regulator-fixed";
+		regulator-name = "vdd2_usb_hub";
+		regulator-min-microvolt = <1200000>;
+		regulator-max-microvolt = <1200000>;
+		regulator-always-on;
+		regulator-boot-on;
+	};
 };
 
 &i2c1 { /* I2C_SCK C23/C24 - MIO from SOM */
@@ -85,7 +116,6 @@
 
 	u14: ina260@40 { /* u14 */
 		compatible = "ti,ina260";
-		#io-channel-cells = <1>;
 		label = "ina260-u14";
 		reg = <0x40>;
 	};
@@ -120,6 +150,14 @@
 	phy-names = "dp-phy0", "dp-phy1";
 	phys = <&psgtr 1 PHY_TYPE_DP 0 0>, <&psgtr 0 PHY_TYPE_DP 1 0>;
 	assigned-clock-rates = <27000000>, <25000000>, <300000000>;
+
+	ports {
+		out_dp: port@5 {
+			dpsub_dp_out: endpoint {
+				remote-endpoint = <&dpcon_in>;
+			};
+		};
+	};
 };
 
 &zynqmp_dpdma {
@@ -148,7 +186,9 @@
 		compatible = "usb424,2744";
 		reg = <1>;
 		peer-hub = <&hub_3_0>;
-		reset-gpios = <&gpio 44 GPIO_ACTIVE_LOW>;
+		reset-gpios = <&slg_delay 0 10000 10000>;
+		vdd-supply = <&vdd_usb_hub>;
+		vdd2-supply = <&vdd2_usb_hub>;
 	};
 
 	/* 3.0 hub on port 2 */
@@ -156,7 +196,7 @@
 		compatible = "usb424,5744";
 		reg = <2>;
 		peer-hub = <&hub_2_0>;
-		reset-gpios = <&gpio 44 GPIO_ACTIVE_LOW>;
+		reset-gpios = <&slg_delay 0 10000 10000>;
 	};
 };
 
@@ -189,7 +229,6 @@
 		#size-cells = <0>;
 
 		phy0: ethernet-phy@1 {
-			#phy-cells = <1>;
 			reg = <1>;
 			compatible = "ethernet-phy-id2000.a231";
 			ti,rx-internal-delay = <DP83867_RGMIIDCTL_2_25_NS>;
@@ -207,23 +246,23 @@
 	status = "okay";
 
 	pinctrl_gpio0_default: gpio0-default {
-                conf {
-                        groups = "gpio0_38_grp";
-                        bias-pull-up;
-                        power-source = <IO_STANDARD_LVCMOS18>;
-                };
+		conf {
+			groups = "gpio0_38_grp";
+			bias-pull-up;
+			power-source = <IO_STANDARD_LVCMOS18>;
+		};
 
-                mux {
-                        groups = "gpio0_38_grp";
-                        function = "gpio0";
-                };
+		mux {
+			groups = "gpio0_38_grp";
+			function = "gpio0";
+		};
 
-                conf-tx {
-                        pins = "MIO38";
-                        bias-disable;
-                        output-enable;
-                };
-        };
+		conf-tx {
+			pins = "MIO38";
+			bias-disable;
+			output-enable;
+		};
+	};
 
 	pinctrl_uart1_default: uart1-default {
 		conf {
@@ -382,9 +421,9 @@
 };
 
 &gpio {
-        status = "okay";
-        pinctrl-names = "default";
-        pinctrl-0 = <&pinctrl_gpio0_default>;
+	status = "okay";
+	pinctrl-names = "default";
+	pinctrl-0 = <&pinctrl_gpio0_default>;
 };
 
 &uart1 {

@@ -320,7 +320,7 @@ static unsigned long mmc_read_and_flush(struct mmc_part *part,
 	}
 	if ((start + sectors) > (part->info.start + part->info.size)) {
 		sectors = part->info.start + part->info.size - start;
-		printf("%s: read sector aligned to partition bounds (%ld)\n",
+		printf("%s: read sector aligned to partition bounds (" LBAF ")\n",
 		       __func__, sectors);
 	}
 
@@ -363,7 +363,7 @@ static unsigned long mmc_write(struct mmc_part *part, lbaint_t start,
 	}
 	if ((start + sectors) > (part->info.start + part->info.size)) {
 		sectors = part->info.start + part->info.size - start;
-		printf("%s: sector aligned to partition bounds (%ld)\n",
+		printf("%s: sector aligned to partition bounds (" LBAF ")\n",
 		       __func__, sectors);
 	}
 	if (unaligned) {
@@ -452,6 +452,7 @@ static AvbIOResult mmc_byte_io(AvbOps *ops,
 	u64 start_offset, start_sector, sectors, residue;
 	u8 *tmp_buf;
 	size_t io_cnt = 0;
+	AvbIOResult io_ret = AVB_IO_RESULT_OK;
 
 	if (!partition || !buffer || io_type > IO_WRITE)
 		return AVB_IO_RESULT_ERROR_IO;
@@ -460,8 +461,10 @@ static AvbIOResult mmc_byte_io(AvbOps *ops,
 	if (!part)
 		return AVB_IO_RESULT_ERROR_NO_SUCH_PARTITION;
 
-	if (!part->info.blksz)
-		return AVB_IO_RESULT_ERROR_IO;
+	if (!part->info.blksz) {
+		io_ret = AVB_IO_RESULT_ERROR_IO;
+		goto out;
+	}
 
 	start_offset = calc_offset(part, offset);
 	while (num_bytes) {
@@ -489,7 +492,8 @@ static AvbIOResult mmc_byte_io(AvbOps *ops,
 				if (ret != 1) {
 					printf("%s: read error (%ld, %lld)\n",
 					       __func__, ret, start_sector);
-					return AVB_IO_RESULT_ERROR_IO;
+					io_ret = AVB_IO_RESULT_ERROR_IO;
+					goto out;
 				}
 				/*
 				 * if this is not aligned at sector start,
@@ -506,7 +510,8 @@ static AvbIOResult mmc_byte_io(AvbOps *ops,
 				if (ret != 1) {
 					printf("%s: read error (%ld, %lld)\n",
 					       __func__, ret, start_sector);
-					return AVB_IO_RESULT_ERROR_IO;
+					io_ret = AVB_IO_RESULT_ERROR_IO;
+					goto out;
 				}
 				memcpy((void *)tmp_buf +
 					start_offset % part->info.blksz,
@@ -517,7 +522,8 @@ static AvbIOResult mmc_byte_io(AvbOps *ops,
 				if (ret != 1) {
 					printf("%s: write error (%ld, %lld)\n",
 					       __func__, ret, start_sector);
-					return AVB_IO_RESULT_ERROR_IO;
+					io_ret = AVB_IO_RESULT_ERROR_IO;
+					goto out;
 				}
 			}
 
@@ -543,7 +549,8 @@ static AvbIOResult mmc_byte_io(AvbOps *ops,
 
 			if (!ret) {
 				printf("%s: sector read error\n", __func__);
-				return AVB_IO_RESULT_ERROR_IO;
+				io_ret = AVB_IO_RESULT_ERROR_IO;
+				goto out;
 			}
 
 			io_cnt += ret * part->info.blksz;
@@ -557,7 +564,9 @@ static AvbIOResult mmc_byte_io(AvbOps *ops,
 	if (io_type == IO_READ && out_num_read)
 		*out_num_read = io_cnt;
 
-	return AVB_IO_RESULT_OK;
+out:
+	free(part);
+	return io_ret;
 }
 
 /**
@@ -867,12 +876,15 @@ static AvbIOResult get_unique_guid_for_partition(AvbOps *ops,
 		return AVB_IO_RESULT_ERROR_NO_SUCH_PARTITION;
 
 	uuid_size = sizeof(part->info.uuid);
-	if (uuid_size > guid_buf_size)
+	if (uuid_size > guid_buf_size) {
+		free(part);
 		return AVB_IO_RESULT_ERROR_IO;
+	}
 
 	memcpy(guid_buf, part->info.uuid, uuid_size);
 	guid_buf[uuid_size - 1] = 0;
 
+	free(part);
 	return AVB_IO_RESULT_OK;
 }
 
@@ -903,6 +915,7 @@ static AvbIOResult get_size_of_partition(AvbOps *ops,
 		return AVB_IO_RESULT_ERROR_NO_SUCH_PARTITION;
 
 	*out_size_num_bytes = part->info.blksz * part->info.size;
+	free(part);
 
 	return AVB_IO_RESULT_OK;
 }

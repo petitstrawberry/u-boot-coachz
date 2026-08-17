@@ -13,8 +13,6 @@
 #include <fdt_support.h>
 #include <spl.h>
 
-DECLARE_GLOBAL_DATA_PTR;
-
 struct efi_fw_image fw_images[] = {
 	{
 		.image_type_id = BEAGLEBONEAI64_TIBOOT3_IMAGE_GUID,
@@ -44,11 +42,6 @@ struct efi_capsule_update_info update_info = {
 	.num_images = ARRAY_SIZE(fw_images),
 	.images = fw_images,
 };
-
-int board_init(void)
-{
-	return 0;
-}
 
 int dram_init(void)
 {

@@ -223,8 +223,6 @@ struct cadence_spi_plat {
 	u32		tchsh_ns;
 	u32		tslch_ns;
 	u32		quirks;
-
-	bool            is_dma;
 };
 
 struct cadence_spi_priv {
@@ -320,5 +318,7 @@ int cadence_qspi_flash_reset(struct udevice *dev);
 ofnode cadence_qspi_get_subnode(struct udevice *dev);
 void cadence_qspi_apb_enable_linear_mode(bool enable);
 int cadence_device_reset(struct udevice *dev);
-
+int cadence_qspi_setup_opcode_ext(struct cadence_spi_priv *priv,
+				  const struct spi_mem_op *op,
+				  unsigned int shift);
 #endif /* __CADENCE_QSPI_H__ */

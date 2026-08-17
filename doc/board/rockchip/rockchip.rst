@@ -40,15 +40,17 @@ List of mainline supported Rockchip boards:
 * rk3229
      - Rockchip Evb-RK3229 (evb-rk3229)
 * rk3288
-     - Rockchip Evb-RK3288 (evb-rk3288)
+     - Rockchip Evb-RK3288-rk808 (evb-rk3288-rk808)
      - Firefly-RK3288 (firefly-rk3288)
      - MQmaker MiQi (miqi-rk3288)
      - Phytec RK3288 PCM-947 (phycore-rk3288)
      - PopMetal-RK3288 (popmetal-rk3288)
      - Radxa Rock 2 Square (rock2)
+     - Radxa Rock Pi N8 (rock-pi-n8-rk3288)
      - Tinker-RK3288 (tinker-rk3288)
+     - Tinker-S-RK3288 (tinker-s-rk3288)
      - Google Jerry (chromebook_jerry)
-     - Google Mickey (chromebook_mickey)
+     - Google Mickey (chromebit_mickey)
      - Google Minnie (chromebook_minnie)
      - Google Speedy (chromebook_speedy)
      - Amarula Vyasa-RK3288 (vyasa-rk3288)
@@ -100,13 +102,17 @@ List of mainline supported Rockchip boards:
      - Theobroma Systems RK3399-Q7 SoM - Puma (puma_rk3399)
 
 * rk3528
+     - ArmSoM Sige1 (sige1-rk3528)
+     - FriendlyElec NanoPi Zero2 (nanopi-zero2-rk3528)
      - Generic RK3528 (generic-rk3528)
      - Radxa E20C (radxa-e20c-rk3528)
+     - Radxa ROCK 2A/2F (rock-2-rk3528)
 
 * rk3566
      - Anbernic RGxx3 (anbernic-rgxx3-rk3566)
      - FriendlyElec NanoPi R3S (nanopi-r3s-rk3566)
      - Hardkernel ODROID-M1S (odroid-m1s-rk3566)
+     - LCKFB TaishanPi (lckfb-tspi-rk3566)
      - Pine64 PineTab2 (pinetab2-rk3566)
      - Pine64 Quartz64-A Board (quartz64-a-rk3566)
      - Pine64 Quartz64-B Board (quartz64-b-rk3566)
@@ -120,6 +126,8 @@ List of mainline supported Rockchip boards:
      - Xunlong Orange Pi 3B (orangepi-3b-rk3566)
 
 * rk3568
+     - 9Tripod X3568 v4 (9tripod-x3568-v4-rk3568)
+     - Anbernic RG-DS (anbernic-rg-ds-rk3568)
      - Rockchip Evb-RK3568 (evb-rk3568)
      - Banana Pi BPI-R2 Pro (bpi-r2-pro-rk3568)
      - EmbedFire LubanCat 2 (lubancat-2-rk3568)
@@ -127,38 +135,51 @@ List of mainline supported Rockchip boards:
      - FriendlyElec NanoPi R5S (nanopi-r5s-rk3568)
      - Generic RK3566/RK3568 (generic-rk3568)
      - Hardkernel ODROID-M1 (odroid-m1-rk3568)
+     - LinkEase EasePi R1 (easepi-r1-rk3568)
+     - Lunzn FastRhino R66S (fastrhino-r66s-rk3568)
      - QNAP TS-433 (qnap-ts433-rk3568)
      - Radxa E25 Carrier Board (radxa-e25-rk3568)
      - Radxa ROCK 3A (rock-3a-rk3568)
      - Radxa ROCK 3B (rock-3b-rk3568)
 
 * rk3576
+     - ArmSoM Sige5 (sige5-rk3576)
      - Firefly ROC-RK3576-PC (roc-pc-rk3576)
+     - FriendlyElec NanoPi M5 (nanopi-m5-rk3576)
+     - FriendlyElec NanoPi R76S (nanopi-r76s-rk3576)
+     - Generic RK3576 (generic-rk3576)
+     - Luckfox Omni3576 (omni3576-rk3576)
+     - Radxa ROCK 4D (rock-4d-rk3576)
 
 * rk3588
      - ArmSoM Sige7 (sige7-rk3588)
      - Rockchip EVB (evb-rk3588)
      - Edgeble Neural Compute Module 6A SoM - Neu6a (neu6a-io-rk3588)
      - Edgeble Neural Compute Module 6B SoM - Neu6b (neu6b-io-rk3588)
+     - Firefly ROC-RK3588S-PC (roc-pc-rk3588s)
      - FriendlyElec CM3588 NAS (cm3588-nas-rk3588)
      - FriendlyElec NanoPC-T6 (nanopc-t6-rk3588)
      - FriendlyElec NanoPi R6C (nanopi-r6c-rk3588s)
      - FriendlyElec NanoPi R6S (nanopi-r6s-rk3588s)
-     - Generic RK3588S/RK3588 (generic-rk3588)
+     - GameForce Ace (gameforce-ace-rk3588s)
+     - Generic RK3582/RK3588S/RK3588 (generic-rk3588)
      - Hardkernel ODROID-M2 (odroid-m2-rk3588s)
      - Indiedroid Nova (nova-rk3588s)
      - Khadas Edge2 (khadas-edge2-rk3588s)
+     - MNT Reform2 (mnt-reform2-rk3588)
      - Pine64 QuartzPro64 (quartzpro64-rk3588)
      - Radxa ROCK 5 ITX (rock-5-itx-rk3588)
      - Radxa ROCK 5A (rock5a-rk3588s)
-     - Radxa ROCK 5B (rock5b-rk3588)
-     - Radxa ROCK 5C (rock-5c-rk3588s)
+     - Radxa ROCK 5B/5B+/5T (rock5b-rk3588)
+     - Radxa ROCK 5C/5C Lite (rock-5c-rk3588s)
      - Rockchip Toybrick TB-RK3588X (toybrick-rk3588)
      - Theobroma Systems RK3588-SBC Jaguar (jaguar-rk3588)
      - Theobroma Systems SOM-RK3588-Q7 - Tiger (tiger-rk3588)
      - Turing Machines RK1 (turing-rk1-rk3588)
      - Xunlong Orange Pi 5 (orangepi-5-rk3588s)
+     - Xunlong Orange Pi 5 Max (orangepi-5-max-rk3588)
      - Xunlong Orange Pi 5 Plus (orangepi-5-plus-rk3588)
+     - Xunlong Orange Pi 5 Ultra (orangepi-5-ultra-rk3588)
      - Yanyi Tech CoolPi 4 Model B (coolpi-4b-rk3588s)
      - Yanyi Tech CoolPi CM5 EVB (coolpi-cm5-evb-rk3588)
      - Yanyi Tech CoolPi CM5 GenBook (coolpi-cm5-genbook-rk3588)
@@ -209,7 +230,7 @@ U-Boot
 
 .. code-block:: bash
 
-        git clone --depth 1 https://source.denx.de/u-boot/u-boot.git
+        git clone --depth 1 https://git.u-boot-project.org/u-boot/u-boot.git
         cd u-boot
 
 To build px30 boards:
@@ -231,7 +252,7 @@ To build rk3288 boards:
 
 .. code-block:: bash
 
-        make evb-rk3288_defconfig
+        make evb-rk3288-rk808_defconfig
         make CROSS_COMPILE=arm-linux-gnueabihf-
 
 To build rk3308 boards:

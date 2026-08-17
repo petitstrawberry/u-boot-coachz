@@ -19,6 +19,7 @@ struct cv1800b_sdhci_plat {
 	struct mmc mmc;
 };
 
+#if CONFIG_IS_ENABLED(MMC_SUPPORTS_TUNING)
 static void cv1800b_set_tap_delay(struct sdhci_host *host, u16 tap)
 {
 	sdhci_writel(host, PHY_TX_SRC_INVERT | tap << 16, SDHCI_PHY_TX_RX_DLY);
@@ -61,9 +62,12 @@ static int cv1800b_execute_tuning(struct mmc *mmc, u8 opcode)
 
 	return 0;
 }
+#endif
 
 const struct sdhci_ops cv1800b_sdhci_sd_ops = {
+#if CONFIG_IS_ENABLED(MMC_SUPPORTS_TUNING)
 	.platform_execute_tuning = cv1800b_execute_tuning,
+#endif
 };
 
 static int cv1800b_sdhci_bind(struct udevice *dev)
@@ -81,7 +85,7 @@ static int cv1800b_sdhci_probe(struct udevice *dev)
 	int ret;
 
 	host->name = dev->name;
-	host->ioaddr = devfdt_get_addr_ptr(dev);
+	host->ioaddr = dev_read_addr_ptr(dev);
 
 	upriv->mmc = &plat->mmc;
 	host->mmc = &plat->mmc;
@@ -89,6 +93,9 @@ static int cv1800b_sdhci_probe(struct udevice *dev)
 	host->mmc->dev = dev;
 	host->ops = &cv1800b_sdhci_sd_ops;
 	host->max_clk = MMC_MAX_CLOCK;
+
+	if (dev_read_bool(dev, "no-1-8-v"))
+		host->quirks |= SDHCI_QUIRK_NO_1_8_V;
 
 	ret = mmc_of_parse(dev, &plat->cfg);
 	if (ret)

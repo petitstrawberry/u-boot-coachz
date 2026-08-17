@@ -16,7 +16,7 @@ Synopsis
     wdt start <timeout_ms> [flags]
     wdt stop
     wdt reset
-    wdt expirer [flags]
+    wdt expire [flags]
 
 Description
 -----------
@@ -73,8 +73,3 @@ Configuration
 -------------
 
 The command is only available if CONFIG_CMD_WDT=y.
-
-Return value
-------------
-
-The return value $? is 0 if the command succeeds, 1 upon failure.

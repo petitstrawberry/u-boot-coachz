@@ -359,6 +359,24 @@ void console_puts_select_stderr(bool serial_only, const char *s)
 		console_puts_select(stderr, serial_only, s);
 }
 
+int console_printf_select_stderr(bool serial_only, const char *fmt, ...)
+{
+	char buf[CONFIG_SYS_PBSIZE];
+	va_list args;
+	int ret;
+
+	va_start(args, fmt);
+
+	/* For this to work, buf must be larger than anything we ever want to
+	 * print.
+	 */
+	ret = vscnprintf(buf, sizeof(buf), fmt, args);
+	va_end(args);
+	console_puts_select_stderr(serial_only, buf);
+
+	return ret;
+}
+
 static void console_puts(int file, const char *s)
 {
 	int i;
@@ -623,6 +641,15 @@ int tstc(void)
 
 	/* Send directly to the handler */
 	return serial_tstc();
+}
+
+/**
+ * console_flush_stdin() - drops all pending characters from stdin
+ */
+void console_flush_stdin(void)
+{
+	while (tstc())
+		(void)getchar();
 }
 
 #define PRE_CONSOLE_FLUSHPOINT1_SERIAL			0
@@ -896,8 +923,7 @@ int confirm_yesno(void)
 	char str_input[5];
 
 	/* Flush input */
-	while (tstc())
-		getchar();
+	console_flush_stdin();
 	i = 0;
 	while (i < sizeof(str_input)) {
 		str_input[i] = getchar();
@@ -1194,13 +1220,16 @@ int console_init_r(void)
 	list_for_each(pos, list) {
 		dev = list_entry(pos, struct stdio_dev, list);
 
-		if ((dev->flags & DEV_FLAGS_INPUT) && (inputdev == NULL)) {
+		if ((dev->flags & DEV_FLAGS_INPUT) &&
+		    (dev->priv == gd->cur_serial_dev || !inputdev))
 			inputdev = dev;
-		}
-		if ((dev->flags & DEV_FLAGS_OUTPUT) && (outputdev == NULL)) {
+
+		if ((dev->flags & DEV_FLAGS_OUTPUT) &&
+		    (dev->priv == gd->cur_serial_dev || !outputdev))
 			outputdev = dev;
-		}
-		if(inputdev && outputdev)
+
+		/* The current serial console is the preferred stdio. */
+		if (dev->priv == gd->cur_serial_dev && inputdev && outputdev)
 			break;
 	}
 

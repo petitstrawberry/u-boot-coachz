@@ -328,6 +328,7 @@ static void bd_update_env(void)
 #define CMDLINE_LCD		" lcd="
 	char cmdline[CONFIG_SYS_CBSIZE];
 	int n = 1;
+	int ret;
 
 	if (rootdev != CONFIG_ROOT_DEV && !env_get("firstboot")) {
 		env_set_ulong("rootdev", rootdev);
@@ -347,49 +348,63 @@ static void bd_update_env(void)
 	else
 		cmdline[0] = '\0';
 
-	if ((n + strlen(name) + sizeof(CMDLINE_LCD)) > sizeof(cmdline)) {
-		printf("Error: `bootargs' is too large (%d)\n", n);
-		goto __exit;
-	}
-
 	if (bootargs) {
 		p = strstr(bootargs, CMDLINE_LCD);
 		if (p) {
 			n = (p - bootargs);
 			p += strlen(CMDLINE_LCD);
 		}
-		strncpy(cmdline, bootargs, n);
+		ret = snprintf(cmdline, sizeof(cmdline), "%.*s", n, bootargs);
+		if (ret < 0 || ret >= (int)sizeof(cmdline))
+			goto __exit;
 	}
 
 	/* add `lcd=NAME,NUMdpi' */
-	strncpy(cmdline + n, CMDLINE_LCD, strlen(CMDLINE_LCD));
-	n += strlen(CMDLINE_LCD);
+	ret = snprintf(cmdline + n, sizeof(cmdline) - n, "%s", CMDLINE_LCD);
+	if (ret < 0 || ret >= (int)(sizeof(cmdline) - n))
+		goto __exit;
+	n += ret;
 
-	strcpy(cmdline + n, name);
-	n += strlen(name);
+	ret = snprintf(cmdline + n, sizeof(cmdline) - n, "%s", name);
+	if (ret < 0 || ret >= (int)(sizeof(cmdline) - n))
+		goto __exit;
+	n += ret;
 
 	if (lcddpi) {
-		n += sprintf(cmdline + n, ",%sdpi", lcddpi);
+		ret = snprintf(cmdline + n, sizeof(cmdline) - n, ",%sdpi", lcddpi);
+		if (ret < 0 || ret >= (int)(sizeof(cmdline) - n))
+			goto __exit;
+		n += ret;
 	} else {
 		int dpi = bd_get_lcd_density();
 
-		if (dpi > 0 && dpi < 600)
-			n += sprintf(cmdline + n, ",%ddpi", dpi);
+		if (dpi > 0 && dpi < 600) {
+			ret = snprintf(cmdline + n, sizeof(cmdline) - n, ",%ddpi", dpi);
+			if (ret < 0 || ret >= (int)(sizeof(cmdline) - n))
+				goto __exit;
+			n += ret;
+		}
 	}
 
 	/* copy remaining of bootargs */
 	if (p) {
 		p = strstr(p, " ");
 		if (p) {
-			strcpy(cmdline + n, p);
-			n += strlen(p);
+			ret = snprintf(cmdline + n, sizeof(cmdline) - n, "%s", p);
+			if (ret < 0 || ret >= (int)(sizeof(cmdline) - n))
+				goto __exit;
+			n += ret;
 		}
 	}
 
 	/* append `bootdev=2' */
 #define CMDLINE_BDEV	" bootdev="
-	if (rootdev > 0 && !strstr(cmdline, CMDLINE_BDEV))
-		n += sprintf(cmdline + n, "%s2", CMDLINE_BDEV);
+	if (rootdev > 0 && !strstr(cmdline, CMDLINE_BDEV)) {
+		ret = snprintf(cmdline + n, sizeof(cmdline) - n, "%s2", CMDLINE_BDEV);
+		if (ret < 0 || ret >= (int)(sizeof(cmdline) - n))
+			goto __exit;
+		n += ret;
+	}
 
 	/* finally, let's update uboot env & save it */
 	if (bootargs && strncmp(cmdline, bootargs, sizeof(cmdline))) {
@@ -517,17 +532,17 @@ int dram_init_banksize(void)
 	/* set global data memory */
 	gd->bd->bi_boot_params = CFG_SYS_SDRAM_BASE + 0x00000100;
 
-	gd->bd->bi_dram[0].start = CFG_SYS_SDRAM_BASE;
-	gd->bd->bi_dram[0].size  = CFG_SYS_SDRAM_SIZE;
+	gd->dram[0].start = CFG_SYS_SDRAM_BASE;
+	gd->dram[0].size  = CFG_SYS_SDRAM_SIZE;
 
 	/* Number of Row: 14 bits */
 	if ((reg_val >> 28) == 14)
-		gd->bd->bi_dram[0].size -= 0x20000000;
+		gd->dram[0].size -= 0x20000000;
 
 	/* Number of Memory Chips */
 	if ((reg_val & 0x3) > 1) {
-		gd->bd->bi_dram[1].start = 0x80000000;
-		gd->bd->bi_dram[1].size  = 0x40000000;
+		gd->dram[1].start = 0x80000000;
+		gd->dram[1].size  = 0x40000000;
 	}
 	return 0;
 }

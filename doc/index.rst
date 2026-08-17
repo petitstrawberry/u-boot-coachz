@@ -9,11 +9,21 @@ This is the top level of the U-Boot's documentation tree.  U-Boot
 documentation, like the U-Boot itself, is very much a work in progress;
 that is especially true as we work to integrate our many scattered
 documents into a coherent whole.  Please note that improvements to the
-documentation are welcome; join the U-Boot list at http://lists.denx.de
+documentation are welcome; join the U-Boot list at http://lists.u-boot-project.org
 if you want to help out.
 
 .. toctree::
    :maxdepth: 2
+
+Contributing Guidelines
+-----------------------
+
+General guidelines for contributing to the U-Boot project.
+
+.. toctree::
+   :maxdepth: 2
+
+   CONTRIBUTE
 
 User-oriented documentation
 ---------------------------

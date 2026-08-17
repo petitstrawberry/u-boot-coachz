@@ -10,6 +10,7 @@
 #define LOG_CATEGORY LOGC_EFI
 
 #include <dm.h>
+#include <efi_device_path.h>
 #include <efi_loader.h>
 #include <efi_variable.h>
 #include <efi_tcg2.h>
@@ -351,8 +352,8 @@ efi_tcg2_get_eventlog(struct efi_tcg2_protocol *this,
 	}
 
 	if (tcg2_platform_get_tpm2(&dev)) {
-		event_log_location = NULL;
-		event_log_last_entry = NULL;
+		*event_log_location = 0;
+		*event_log_last_entry = 0;
 		*event_log_truncated = false;
 		ret = EFI_SUCCESS;
 		goto out;
@@ -428,6 +429,9 @@ static efi_status_t tcg2_hash_pe_image(void *efi, u64 efi_size,
 			break;
 		case TPM2_ALG_SHA512:
 			hash_calculate("sha512", regs->reg, regs->num, hash);
+			break;
+		case TPM2_ALG_SM3_256:
+			hash_calculate("sm3_256", regs->reg, regs->num, hash);
 			break;
 		default:
 			continue;
@@ -1209,8 +1213,10 @@ tcg2_measure_gpt_data(struct udevice *dev,
 		goto out2;
 	}
 
-	ret = block_io->read_blocks(block_io, block_io->media->media_id, 1,
-				    block_io->media->block_size, gpt_h);
+	ret = EFI_CALL(block_io->read_blocks(block_io,
+					     block_io->media->media_id, 1,
+					     block_io->media->block_size,
+					     gpt_h));
 	if (ret != EFI_SUCCESS)
 		goto out2;
 
@@ -1223,9 +1229,10 @@ tcg2_measure_gpt_data(struct udevice *dev,
 		goto out2;
 	}
 
-	ret = block_io->read_blocks(block_io, block_io->media->media_id,
-				    gpt_h->partition_entry_lba,
-				    total_gpt_entry_size, entry);
+	ret = EFI_CALL(block_io->read_blocks(block_io,
+					     block_io->media->media_id,
+					     gpt_h->partition_entry_lba,
+					     total_gpt_entry_size, entry));
 	if (ret != EFI_SUCCESS)
 		goto out2;
 
@@ -1336,8 +1343,8 @@ efi_status_t efi_tcg2_measure_dtb(void *dtb)
 	header = dtb;
 	sha256_starts(&hash_ctx);
 	sha256_update(&hash_ctx, (u8 *)header, sizeof(struct fdt_header));
-	sha256_update(&hash_ctx, (u8 *)dtb + fdt_off_dt_struct(dtb), fdt_size_dt_strings(dtb));
-	sha256_update(&hash_ctx, (u8 *)dtb + fdt_off_dt_strings(dtb), fdt_size_dt_struct(dtb));
+	sha256_update(&hash_ctx, (u8 *)dtb + fdt_off_dt_struct(dtb), fdt_size_dt_struct(dtb));
+	sha256_update(&hash_ctx, (u8 *)dtb + fdt_off_dt_strings(dtb), fdt_size_dt_strings(dtb));
 	sha256_update(&hash_ctx, (u8 *)dtb + fdt_off_mem_rsvmap(dtb), rsvmap_size);
 	sha256_finish(&hash_ctx, blob->data + blob->blob_description_size);
 
@@ -1528,9 +1535,9 @@ static efi_status_t tcg2_measure_secure_boot_variable(struct udevice *dev)
 		if (!data && !secure_variables[i].accept_empty)
 			continue;
 
-		if (u16_strcmp(u"DeployedMode", secure_variables[i].name))
+		if (!u16_strcmp(u"DeployedMode", secure_variables[i].name))
 			secure_variables[i].pcr_index = deployed_audit_pcr_index;
-		if (u16_strcmp(u"AuditMode", secure_variables[i].name))
+		if (!u16_strcmp(u"AuditMode", secure_variables[i].name))
 			secure_variables[i].pcr_index = deployed_audit_pcr_index;
 
 		ret = tcg2_measure_variable(dev, secure_variables[i].pcr_index,

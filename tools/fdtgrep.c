@@ -355,6 +355,9 @@ static int display_fdt_by_regions(struct display_info *disp, const void *blob,
 
 		case FDT_BEGIN_NODE:
 			name = fdt_get_name(blob, offset, &len);
+			if (!name)
+				return len;
+
 			fprintf(f, "%*s%s {", depth++ * shift, "",
 				*name ? name : "/");
 			break;
@@ -1040,7 +1043,7 @@ static const char * const usage_opts_help[] = {
 #define util_getopt_long() getopt_long(argc, argv, usage_short_opts, \
 				       usage_long_opts, NULL)
 
-void util_usage(const char *errmsg, const char *synopsis,
+static void util_usage(const char *errmsg, const char *synopsis,
 		const char *short_opts, struct option const long_opts[],
 		const char * const opts_help[])
 {
@@ -1109,7 +1112,7 @@ void util_usage(const char *errmsg, const char *synopsis,
 	util_usage(errmsg, usage_synopsis, usage_short_opts, \
 		   usage_long_opts, usage_opts_help)
 
-void util_version(void)
+static void util_version(void)
 {
 	printf("Version: %s\n", "(U-Boot)");
 	exit(0);

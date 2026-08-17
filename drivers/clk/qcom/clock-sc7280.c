@@ -23,6 +23,10 @@
 #define PCIE_1_AUX_CLK_CMD_RCGR 0x8d058
 #define PCIE1_PHY_RCHNG_CMD_RCGR 0x8d03c
 #define PCIE_1_PIPE_CLK_PHY_MUX 0x8d054
+#define UFS_PHY_AXI_CLK_CMD_RCGR 0x77024
+#define UFS_PHY_ICE_CORE_CLK_CMD_RCGR 0x7706c
+#define UFS_PHY_PHY_AUX_CLK_CMD_RCGR 0x770a0
+#define UFS_PHY_UNIPRO_CORE_CLK_CMD_RCGR 0x77084
 
 static const struct freq_tbl ftbl_gcc_usb30_prim_master_clk_src[] = {
 	F(66666667, CFG_CLK_SRC_GPLL0_EVEN, 4.5, 0, 0),
@@ -39,19 +43,46 @@ static const struct freq_tbl ftbl_gcc_usb30_sec_master_clk_src[] = {
 };
 
 static const struct freq_tbl ftbl_gcc_qupv3_wrap0_s2_clk_src[] = {
-        F(7372800, CFG_CLK_SRC_GPLL0_EVEN, 1, 384, 15625),
-        F(14745600, CFG_CLK_SRC_GPLL0_EVEN, 1, 768, 15625),
-        F(19200000, CFG_CLK_SRC_CXO, 1, 0, 0),
-        F(29491200, CFG_CLK_SRC_GPLL0_EVEN, 1, 1536, 15625),
-        F(32000000, CFG_CLK_SRC_GPLL0_EVEN, 1, 8, 75),
-        F(48000000, CFG_CLK_SRC_GPLL0_EVEN, 1, 4, 25),
-        F(52174000, CFG_CLK_SRC_GPLL0, 1, 2, 23),
-        F(64000000, CFG_CLK_SRC_GPLL0_EVEN, 1, 16, 75),
-        F(75000000, CFG_CLK_SRC_GPLL0_EVEN, 4, 0, 0),
-        F(80000000, CFG_CLK_SRC_GPLL0_EVEN, 1, 4, 15),
-        F(96000000, CFG_CLK_SRC_GPLL0_EVEN, 1, 8, 25),
-        F(100000000, CFG_CLK_SRC_GPLL0, 6, 0, 0),
-        { }
+	F(7372800, CFG_CLK_SRC_GPLL0_EVEN, 1, 384, 15625),
+	F(14745600, CFG_CLK_SRC_GPLL0_EVEN, 1, 768, 15625),
+	F(19200000, CFG_CLK_SRC_CXO, 1, 0, 0),
+	F(29491200, CFG_CLK_SRC_GPLL0_EVEN, 1, 1536, 15625),
+	F(32000000, CFG_CLK_SRC_GPLL0_EVEN, 1, 8, 75),
+	F(48000000, CFG_CLK_SRC_GPLL0_EVEN, 1, 4, 25),
+	F(52174000, CFG_CLK_SRC_GPLL0, 1, 2, 23),
+	F(64000000, CFG_CLK_SRC_GPLL0_EVEN, 1, 16, 75),
+	F(75000000, CFG_CLK_SRC_GPLL0_EVEN, 4, 0, 0),
+	F(80000000, CFG_CLK_SRC_GPLL0_EVEN, 1, 4, 15),
+	F(96000000, CFG_CLK_SRC_GPLL0_EVEN, 1, 8, 25),
+	F(100000000, CFG_CLK_SRC_GPLL0, 6, 0, 0),
+	{ }
+};
+
+static const struct freq_tbl ftbl_gcc_ufs_phy_axi_clk_src[] = {
+	F(25000000, CFG_CLK_SRC_GPLL0_EVEN, 12, 0, 0),
+	F(75000000, CFG_CLK_SRC_GPLL0_EVEN, 4, 0, 0),
+	F(150000000, CFG_CLK_SRC_GPLL0_EVEN, 2, 0, 0),
+	F(300000000, CFG_CLK_SRC_GPLL0_EVEN, 1, 0, 0),
+	{ }
+};
+
+static const struct freq_tbl ftbl_gcc_ufs_phy_ice_core_clk_src[] = {
+	F(75000000, CFG_CLK_SRC_GPLL0_EVEN, 4, 0, 0),
+	F(150000000, CFG_CLK_SRC_GPLL0_EVEN, 2, 0, 0),
+	F(300000000, CFG_CLK_SRC_GPLL0_EVEN, 1, 0, 0),
+	{ }
+};
+
+static const struct freq_tbl ftbl_gcc_ufs_phy_phy_aux_clk_src[] = {
+	F(19200000, CFG_CLK_SRC_CXO, 1, 0, 0),
+	{ }
+};
+
+static const struct freq_tbl ftbl_gcc_ufs_phy_unipro_core_clk_src[] = {
+	F(75000000, CFG_CLK_SRC_GPLL0_EVEN, 4, 0, 0),
+	F(150000000, CFG_CLK_SRC_GPLL0_EVEN, 2, 0, 0),
+	F(300000000, CFG_CLK_SRC_GPLL0_EVEN, 1, 0, 0),
+	{ }
 };
 
 static ulong sc7280_set_rate(struct clk *clk, ulong rate)
@@ -63,9 +94,19 @@ static ulong sc7280_set_rate(struct clk *clk, ulong rate)
 		debug("%s: %s, requested rate=%ld\n", __func__, priv->data->clks[clk->id].name, rate);
 
 	switch (clk->id) {
+	case GCC_QUPV3_WRAP0_S2_CLK: /* UART2 */
+		freq = qcom_find_freq(ftbl_gcc_qupv3_wrap0_s2_clk_src, rate);
+		clk_rcg_set_rate_mnd(priv->base, 0x17270,
+				     freq->pre_div, freq->m, freq->n, freq->src, 16);
+		return freq->freq;
 	case GCC_QUPV3_WRAP0_S5_CLK: /* UART5 */
 		freq = qcom_find_freq(ftbl_gcc_qupv3_wrap0_s2_clk_src, rate);
 		clk_rcg_set_rate_mnd(priv->base, 0x17600,
+				     freq->pre_div, freq->m, freq->n, freq->src, 16);
+		return freq->freq;
+	case GCC_QUPV3_WRAP0_S7_CLK: /* UART7 */
+		freq = qcom_find_freq(ftbl_gcc_qupv3_wrap0_s2_clk_src, rate);
+		clk_rcg_set_rate_mnd(priv->base, 0x17860,
 				     freq->pre_div, freq->m, freq->n, freq->src, 16);
 		return freq->freq;
 	case GCC_USB30_PRIM_MASTER_CLK:
@@ -93,6 +134,26 @@ static ulong sc7280_set_rate(struct clk *clk, ulong rate)
 	case GCC_PCIE1_PHY_RCHNG_CLK:
 		clk_rcg_set_rate(priv->base, PCIE1_PHY_RCHNG_CMD_RCGR, 5, CFG_CLK_SRC_GPLL0_EVEN);
 		return 100000000;
+	case GCC_UFS_PHY_AXI_CLK:
+		freq = qcom_find_freq(ftbl_gcc_ufs_phy_axi_clk_src, rate);
+		clk_rcg_set_rate_mnd(priv->base, UFS_PHY_AXI_CLK_CMD_RCGR,
+				     freq->pre_div, freq->m, freq->n, freq->src, 8);
+		return freq->freq;
+	case GCC_UFS_PHY_ICE_CORE_CLK:
+		freq = qcom_find_freq(ftbl_gcc_ufs_phy_ice_core_clk_src, rate);
+		clk_rcg_set_rate_mnd(priv->base, UFS_PHY_ICE_CORE_CLK_CMD_RCGR,
+				     freq->pre_div, freq->m, freq->n, freq->src, 8);
+		return freq->freq;
+	case GCC_UFS_PHY_PHY_AUX_CLK:
+		freq = qcom_find_freq(ftbl_gcc_ufs_phy_phy_aux_clk_src, rate);
+		clk_rcg_set_rate_mnd(priv->base, UFS_PHY_PHY_AUX_CLK_CMD_RCGR,
+				     freq->pre_div, freq->m, freq->n, freq->src, 8);
+		return freq->freq;
+	case GCC_UFS_PHY_UNIPRO_CORE_CLK:
+		freq = qcom_find_freq(ftbl_gcc_ufs_phy_unipro_core_clk_src, rate);
+		clk_rcg_set_rate_mnd(priv->base, UFS_PHY_UNIPRO_CORE_CLK_CMD_RCGR,
+				     freq->pre_div, freq->m, freq->n, freq->src, 8);
+		return freq->freq;
 	default:
 		return rate;
 	}
@@ -106,6 +167,7 @@ static const struct gate_clk sc7280_clks[] = {
 	GATE_CLK(GCC_USB30_PRIM_MOCK_UTMI_CLK, 0xf01c, 1),
 	GATE_CLK(GCC_USB3_PRIM_PHY_AUX_CLK, 0xf054, 1),
 	GATE_CLK(GCC_USB3_PRIM_PHY_COM_AUX_CLK, 0xf058, 1),
+	GATE_CLK(GCC_USB3_PRIM_PHY_PIPE_CLK, 0xf05c, 1),
 	GATE_CLK(GCC_CFG_NOC_USB3_SEC_AXI_CLK, 0x9e07c, 1),
 	GATE_CLK(GCC_USB30_SEC_MASTER_CLK, 0x9e010, 1),
 	GATE_CLK(GCC_AGGRE_USB3_SEC_AXI_CLK, 0x9e080, 1),
@@ -127,11 +189,17 @@ static const struct gate_clk sc7280_clks[] = {
 	GATE_CLK(GCC_AGGRE_NOC_PCIE_CENTER_SF_AXI_CLK, 0x52008, BIT(28)),
 	GATE_CLK(GCC_QUPV3_WRAP0_S0_CLK, 0x52008, BIT(10)),
 	GATE_CLK(GCC_QUPV3_WRAP0_S1_CLK, 0x52008, BIT(11)),
+	GATE_CLK(GCC_QUPV3_WRAP0_S2_CLK, 0x52008, BIT(12)),
 	GATE_CLK(GCC_QUPV3_WRAP0_S3_CLK, 0x52008, BIT(13)),
+	GATE_CLK(GCC_QUPV3_WRAP0_S4_CLK, 0x52008, BIT(14)),
 	GATE_CLK(GCC_QUPV3_WRAP0_S5_CLK, 0x52008, BIT(15)),
+	GATE_CLK(GCC_QUPV3_WRAP0_S6_CLK, 0x52008, BIT(16)),
+	GATE_CLK(GCC_QUPV3_WRAP0_S7_CLK, 0x52008, BIT(17)),
+	GATE_CLK(GCC_QUPV3_WRAP1_S1_CLK, 0x52008, BIT(23)),
 	GATE_CLK(GCC_UFS_PHY_AXI_CLK, 0x77010, BIT(0)),
 	GATE_CLK(GCC_AGGRE_UFS_PHY_AXI_CLK, 0x770cc, BIT(0)),
 	GATE_CLK(GCC_UFS_PHY_AHB_CLK, 0x77018, BIT(0)),
+	GATE_CLK(GCC_UFS_PHY_ICE_CORE_CLK, 0x77064, BIT(0)),
 	GATE_CLK(GCC_UFS_PHY_UNIPRO_CORE_CLK, 0x7705c, BIT(0)),
 	GATE_CLK(GCC_UFS_PHY_PHY_AUX_CLK, 0x7709c, BIT(0)),
 	GATE_CLK(GCC_UFS_PHY_TX_SYMBOL_0_CLK, 0x7701c, BIT(0)),
@@ -140,6 +208,8 @@ static const struct gate_clk sc7280_clks[] = {
 	GATE_CLK(GCC_UFS_1_CLKREF_EN, 0x8c000, BIT(0)),
 	GATE_CLK(GCC_SDCC2_AHB_CLK, 0x14008, BIT(0)),
 	GATE_CLK(GCC_SDCC2_APPS_CLK, 0x14004, BIT(0)),
+	GATE_CLK(GCC_SDCC1_AHB_CLK,  0x75004, BIT(0)),
+	GATE_CLK(GCC_SDCC1_APPS_CLK, 0x75008, BIT(0)),
 };
 
 static int sc7280_enable(struct clk *clk)
@@ -184,6 +254,9 @@ static int sc7280_enable(struct clk *clk)
 	case GCC_QUPV3_WRAP0_S3_CLK:
 		clk_rcg_set_rate_mnd(priv->base, 0x173a0, 1, 0, 0, CFG_CLK_SRC_CXO, 16);
 		break;
+	case GCC_QUPV3_WRAP1_S1_CLK:
+		clk_rcg_set_rate_mnd(priv->base, 0x18140, 1, 0, 0, CFG_CLK_SRC_CXO, 16);
+		break;
 	}
 
 	return qcom_gate_clk_en(priv, clk->id);
@@ -227,7 +300,7 @@ static const char *const sc7280_rcg_names[] = {
 	"GCC_PCIE_1_AUX_CLK_SRC",
 };
 
-static struct msm_clk_data qcs404_gcc_data = {
+static struct msm_clk_data sc7280_gcc_data = {
 	.resets = sc7280_gcc_resets,
 	.num_resets = ARRAY_SIZE(sc7280_gcc_resets),
 	.clks = sc7280_clks,
@@ -247,7 +320,7 @@ static struct msm_clk_data qcs404_gcc_data = {
 static const struct udevice_id gcc_sc7280_of_match[] = {
 	{
 		.compatible = "qcom,gcc-sc7280",
-		.data = (ulong)&qcs404_gcc_data,
+		.data = (ulong)&sc7280_gcc_data,
 	},
 	{ }
 };

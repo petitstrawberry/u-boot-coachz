@@ -66,7 +66,7 @@ static int verify_bch(int ecc_bits, unsigned int prim_poly, u8 *data,
 		return -1;
 	}
 
-	unsigned int *errloc = (unsigned int *)calloc(data_length,
+	unsigned int *errloc = (unsigned int *)calloc(ecc_bits,
 						      sizeof(unsigned int));
 	int errors = decode_bch(bch, data, data_length, ecc, NULL, NULL,
 				errloc);
@@ -215,8 +215,8 @@ int read_i2c_vpd(struct vpd_cache *cache,
 
 	size = i2c_eeprom_size(dev);
 	if (size < 0) {
-		printf("Unable to get size of eeprom: %d\n", ret);
-		return ret;
+		printf("Unable to get size of eeprom: %d\n", size);
+		return size;
 	}
 
 	data = malloc(size);

@@ -292,6 +292,9 @@ static int virtio_uclass_child_pre_probe(struct udevice *vdev)
 	if (ret)
 		goto err;
 
+	/* After a reset we always need to start the init sequence again */
+	virtio_add_status(vdev, VIRTIO_CONFIG_S_ACKNOWLEDGE);
+
 	/* We have a driver! */
 	virtio_add_status(vdev, VIRTIO_CONFIG_S_DRIVER);
 
@@ -328,7 +331,7 @@ static int virtio_uclass_child_pre_probe(struct udevice *vdev)
 		debug("(%s): legacy virtio device\n", vdev->name);
 		uc_priv->features = driver_features_legacy & device_features;
 	} else {
-		debug("(%s): v1.0 complaint virtio device\n", vdev->name);
+		debug("(%s): v1.0 compliant virtio device\n", vdev->name);
 		uc_priv->features = driver_features & device_features;
 	}
 
@@ -397,9 +400,6 @@ UCLASS_DRIVER(virtio) = {
 	.per_device_auto	= sizeof(struct virtio_dev_priv),
 };
 
-struct bootdev_ops virtio_bootdev_ops = {
-};
-
 static const struct udevice_id virtio_bootdev_ids[] = {
 	{ .compatible = "u-boot,bootdev-virtio" },
 	{ }
@@ -408,7 +408,6 @@ static const struct udevice_id virtio_bootdev_ids[] = {
 U_BOOT_DRIVER(virtio_bootdev) = {
 	.name		= "virtio_bootdev",
 	.id		= UCLASS_BOOTDEV,
-	.ops		= &virtio_bootdev_ops,
 	.bind		= virtio_bootdev_bind,
 	.of_match	= virtio_bootdev_ids,
 };

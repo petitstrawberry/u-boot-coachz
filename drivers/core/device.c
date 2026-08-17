@@ -473,7 +473,11 @@ static int device_get_dma_constraints(struct udevice *dev)
 		return ret;
 	}
 
-	dev_set_dma_offset(dev, cpu - bus);
+#if CONFIG_IS_ENABLED(DM_DMA)
+	dev->dma_cpu = cpu;
+	dev->dma_bus = bus;
+	dev->dma_size = size;
+#endif
 
 	return 0;
 }
@@ -1143,6 +1147,8 @@ int device_set_name(struct udevice *dev, const char *name)
 	name = strdup(name);
 	if (!name)
 		return -ENOMEM;
+	if (dev_get_flags(dev) & DM_FLAG_NAME_ALLOCED)
+		free((char *)dev->name);
 	dev->name = name;
 	device_set_name_alloced(dev);
 

@@ -28,21 +28,7 @@ void at91_prepare_cpu_var(void);
 
 static void board_leds_init(void)
 {
-#if CONFIG_IS_ENABLED(LED)
-	const char *led_name;
-	struct udevice *dev;
-	int ret;
-
-	led_name = ofnode_conf_read_str("u-boot,boot-led");
-	if (!led_name)
-		return;
-
-	ret = led_get_by_label(led_name, &dev);
-	if (ret)
-		return;
-
-	led_set_state(dev, LEDST_ON);
-#else
+#if !CONFIG_IS_ENABLED(LED_BOOT)
 	at91_set_pio_output(AT91_PIO_PORTD, 17, 0);	/* LED RED */
 	at91_set_pio_output(AT91_PIO_PORTD, 19, 0);	/* LED GREEN */
 	at91_set_pio_output(AT91_PIO_PORTD, 21, 1);	/* LED BLUE */
@@ -65,11 +51,6 @@ void board_debug_uart_init(void)
 }
 #endif
 
-int board_early_init_f(void)
-{
-	return 0;
-}
-
 #define MAC24AA_MAC_OFFSET     0xfa
 
 #ifdef CONFIG_MISC_INIT_R
@@ -85,7 +66,7 @@ int misc_init_r(void)
 int board_init(void)
 {
 	/* address of boot parameters */
-	gd->bd->bi_boot_params = gd->bd->bi_dram[0].start + 0x100;
+	gd->bd->bi_boot_params = gd->dram[0].start + 0x100;
 
 	board_leds_init();
 

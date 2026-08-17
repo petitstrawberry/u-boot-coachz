@@ -84,7 +84,7 @@ u-boot-spl_HS_SPI_X-LOADER: $(obj)/u-boot-spl.bin FORCE
 # file, not an SPL. This will work for all boot devices, other than SPI
 # flash. On Keystone devices when booting from an SD card FAT partition this
 # file must be called "MLO"
-u-boot_HS_MLO: $(obj)/u-boot.bin
+u-boot_HS_MLO: $(obj)/u-boot.bin FORCE
 	$(call if_changed,mkomapsecimg)
 	@if [ -f $@ ]; then \
 		cp -f $@ MLO; \
@@ -104,9 +104,9 @@ ifdef CONFIG_SPL_LOAD_FIT
 MKIMAGEFLAGS_u-boot_HS.img = -f auto -A $(ARCH) -T firmware -C none -O u-boot \
 	-a $(CONFIG_TEXT_BASE) -e $(CONFIG_SYS_UBOOT_START) \
 	-n "U-Boot $(UBOOTRELEASE) for $(BOARD) board" -E \
-	$(patsubst %,-b arch/$(ARCH)/dts/%.dtb_HS,$(subst ",,$(CONFIG_OF_LIST)))
+	$(patsubst %,-b $(dt_dir)/%.dtb_HS,$(subst ",,$(CONFIG_OF_LIST)))
 
-OF_LIST_TARGETS = $(patsubst %,arch/$(ARCH)/dts/%.dtb,$(subst ",,$(CONFIG_OF_LIST)))
+OF_LIST_TARGETS = $(patsubst %,$(dt_dir)/%.dtb,$(subst ",,$(CONFIG_OF_LIST)))
 $(OF_LIST_TARGETS): dtbs
 
 %.dtb_HS: %.dtb FORCE

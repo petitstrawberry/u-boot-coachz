@@ -108,6 +108,15 @@ struct global_data {
 	 */
 	unsigned long relocaddr;
 	/**
+	 * @initial_relocaddr: top address of U-Boot in RAM
+	 *
+	 * This should be the value of relocaddr after setup_dest_addr() and
+	 * before reserve_pram() or any other allocations or reservations shift
+	 * it. This address will, depending on the platform, be equivalent to
+	 * ram_top and should also be considered an exclusive address.
+	 */
+	unsigned long initial_relocaddr;
+	/**
 	 * @irq_sp: IRQ stack pointer
 	 */
 	unsigned long irq_sp;
@@ -448,6 +457,13 @@ struct global_data {
 	 */
 	struct upl *upl;
 #endif
+	/**
+	 * @dram: array describing DRAM banks (start address and size for each bank)
+	 */
+	struct {			/* RAM configuration */
+		phys_addr_t start;
+		phys_size_t size;
+	} dram[CONFIG_NR_DRAM_BANKS];
 };
 #ifndef DO_DEPS_ONLY
 static_assert(sizeof(struct global_data) == GD_SIZE);
@@ -538,7 +554,7 @@ static_assert(sizeof(struct global_data) == GD_SIZE);
 #if CONFIG_VAL(SYS_MALLOC_F_LEN)
 #define gd_malloc_ptr()		gd->malloc_ptr
 #else
-#define gd_malloc_ptr()		0L
+#define gd_malloc_ptr()		0
 #endif
 
 #if CONFIG_IS_ENABLED(UPL)
@@ -671,19 +687,19 @@ enum gd_flags {
 	 * @GD_FLG_FDT_CHANGED: Device tree change has been detected by tests
 	 */
 	GD_FLG_FDT_CHANGED = 0x100000,
-	/**
-	 * @GD_FLG_OF_TAG_MIGRATE: Device tree has old u-boot,dm- tags
+	/*
+	 * @GD_FLG_OF_TAG_MIGRATE: Previously had the value of 0x200000 but was
+	 * freed when migration support was removed.
 	 */
-	GD_FLG_OF_TAG_MIGRATE = 0x200000,
 	/**
 	 * @GD_FLG_DM_DEAD: Driver model is not accessible. This can be set when
 	 * the memory used to holds its tables has been mapped out.
 	 */
 	GD_FLG_DM_DEAD = 0x400000,
 	/**
-	 * @GD_FLG_BLOBLIST_READY: bloblist is ready for use
+	 * @GD_FLG_BLOBLIST_HANDOFF: bloblist has been found.
 	 */
-	GD_FLG_BLOBLIST_READY = 0x800000,
+	GD_FLG_BLOBLIST_HANDOFF = 0x800000,
 	/**
 	 * @GD_FLG_HUSH_OLD_PARSER: Use hush old parser.
 	 */

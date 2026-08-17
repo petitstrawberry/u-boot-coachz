@@ -70,10 +70,10 @@ Example::
         /* U-Boot script for booting */
 
         if [ -z ${tftpserverip} ]; then
-            echo "Use 'setenv tftpserverip a.b.c.d' to set IP address."
+            echo "Use 'env set tftpserverip a.b.c.d' to set IP address."
         fi
 
-        usb start; setenv autoload n; bootp;
+        usb start; env set autoload n; bootp;
         tftpboot ${tftpserverip}:
         bootm
     failed=
@@ -99,9 +99,6 @@ For this particular issue you can use ``DEFAULT_DEVICE_TREE`` instead::
 
 There is no general way to remove quotes.
 
-If CONFIG_ENV_SOURCE_FILE is empty and the default filename is not present, then
-the old-style C environment is used instead. See below.
-
 Old-style C environment
 -----------------------
 
@@ -114,6 +111,9 @@ Board maintainers are encouraged to migrate to the text-based environment as it
 is easier to maintain. The distro-board script still requires the old-style
 environments, so use :doc:`/develop/bootstd/index` instead.
 
+If both the text-based environment file and the old-style C environment are
+defined, the variables from the old-style C environment will override those set
+in the text-based environment file.
 
 List of environment variables
 -----------------------------
@@ -213,7 +213,7 @@ updatefile
 
 autoload
     if set to "no" (any string beginning with 'n'),
-    "bootp" and "dhcp" will just load perform a lookup of the
+    "bootp" and "dhcp" will just perform a lookup of the
     configuration from the BOOTP server, but not try to
     load any image.
 
@@ -263,7 +263,7 @@ initrd_high
     sure that the initrd image is placed in the first
     12 MB as well - this can be done with::
 
-        setenv initrd_high 00c00000
+        env set initrd_high 00c00000
 
     If you set initrd_high to 0xffffffff (32-bit machines) or
     0xffffffffffffffff (64-bit machines), this is an
@@ -310,9 +310,9 @@ ethact
     controls which interface is currently active.
     For example you can do the following::
 
-    => setenv ethact FEC
+    => env set ethact FEC
     => ping 192.168.0.1 # traffic sent on FEC
-    => setenv ethact SCC
+    => env set ethact SCC
     => ping 10.0.0.1 # traffic sent on SCC
 
 ethrotate
@@ -334,6 +334,15 @@ netretry
     are tried once without success.
     Useful on scripts which control the retry operation
     themselves.
+
+phy_aneg_timeout
+    If set, the specified value will override CONFIG_PHY_ANEG_TIMEOUT.
+    This variable has the same base and unit as CONFIG_PHY_ANEG_TIMEOUT
+    which is "decimal" and "millisecond" respectively. The default value
+    of CONFIG_PHY_ANEG_TIMEOUT may be sufficient for most use-cases, but
+    certain link-partners may require a larger timeout due to the Ethernet
+    PHY they use. Alternatively, the timeout can be reduced as well if the
+    use-case demands it.
 
 rng_seed_size
     Size of random value added to device-tree node /chosen/rng-seed.
@@ -562,8 +571,8 @@ only effect after the next boot (yes, that's just like Windows).
 External environment file
 -------------------------
 
-The `CONFIG_USE_DEFAULT_ENV_FILE` option provides a way to bypass the
-environment generation in U-Boot. If enabled, then `CONFIG_DEFAULT_ENV_FILE`
+The `CONFIG_ENV_USE_DEFAULT_ENV_TEXT_FILE` option provides a way to bypass the
+environment generation in U-Boot. If enabled, then `CONFIG_ENV_DEFAULT_ENV_TEXT_FILE`
 provides the name of a file which is converted into the environment,
 completely bypassing the standard environment variables in `env_default.h`.
 
@@ -578,5 +587,5 @@ Implementation
 
 See :doc:`../develop/environment` for internal development details.
 
-.. _`Booting ARM Linux`: https://www.kernel.org/doc/html/latest/arm/booting.html
-.. _`Booting AArch64 Linux`: https://www.kernel.org/doc/html/latest/arm64/booting.html
+.. _`Booting ARM Linux`: https://www.kernel.org/doc/html/latest/arch/arm/booting.html
+.. _`Booting AArch64 Linux`: https://www.kernel.org/doc/html/latest/arch/arm64/booting.html

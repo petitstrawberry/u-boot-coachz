@@ -192,6 +192,7 @@ out:
 }
 
 static int total_sector;
+#if !IS_ENABLED(CONFIG_FS_FAT_HANDLE_SECTOR_SIZE_MISMATCH)
 static int disk_write(__u32 block, __u32 nr_blocks, void *buf)
 {
 	ulong ret;
@@ -211,6 +212,7 @@ static int disk_write(__u32 block, __u32 nr_blocks, void *buf)
 
 	return ret;
 }
+#endif /* CONFIG_FS_FAT_HANDLE_SECTOR_SIZE_MISMATCH */
 
 /*
  * Write fat buffer into block device
@@ -223,9 +225,9 @@ static int flush_dirty_fat_buffer(fsdata *mydata)
 	__u32 startblock = mydata->fatbufnum * FATBUFBLOCKS;
 
 	debug("debug: evicting %d, dirty: %d\n", mydata->fatbufnum,
-	      (int)mydata->fat_dirty);
+	      (int)fat_is_dirty(mydata));
 
-	if ((!mydata->fat_dirty) || (mydata->fatbufnum == -1))
+	if (!fat_is_dirty(mydata) || (mydata->fatbufnum == -1))
 		return 0;
 
 	/* Cap length if fatlength is not a multiple of FATBUFBLOCKS */
@@ -248,7 +250,7 @@ static int flush_dirty_fat_buffer(fsdata *mydata)
 			return -1;
 		}
 	}
-	mydata->fat_dirty = 0;
+	fat_mark_clean(mydata);
 
 	return 0;
 }
@@ -484,8 +486,7 @@ static int set_fatent_value(fsdata *mydata, __u32 entry, __u32 entry_value)
 		mydata->fatbufnum = bufnum;
 	}
 
-	/* Mark as dirty */
-	mydata->fat_dirty = 1;
+	fat_mark_dirty(mydata);
 
 	/* Set the actual entry */
 	switch (mydata->fatsize) {
@@ -1174,9 +1175,9 @@ static void dentry_set_time(dir_entry *dentptr)
 		date = (tm.tm_mday & 0x1f) |
 		       ((tm.tm_mon & 0xf) << 5) |
 		       ((tm.tm_year - 1980) << 9);
-		time = (tm.tm_sec > 1) |
+		time = (tm.tm_sec >> 1) |
 		       ((tm.tm_min & 0x3f) << 5) |
-		(tm.tm_hour << 11);
+		       (tm.tm_hour << 11);
 		dentptr->date = date;
 		dentptr->time = time;
 		return;

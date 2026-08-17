@@ -8,14 +8,11 @@
 #include <dm.h>
 #include <init.h>
 #include <log.h>
-#include <asm/global_data.h>
 #include <dm/ofnode.h>
 #include <mapmem.h>
 #include <dt-structs.h>
 #include <timer.h>
 #include <asm/io.h>
-
-DECLARE_GLOBAL_DATA_PTR;
 
 #define SP804_TIMERX_LOAD		0x00
 #define SP804_TIMERX_VALUE		0x04
@@ -47,7 +44,7 @@ static int sp804_clk_of_to_plat(struct udevice *dev)
 	struct sp804_timer_plat *plat = dev_get_plat(dev);
 
 	plat->base = dev_read_addr(dev);
-	if (!plat->base)
+	if (plat->base == FDT_ADDR_T_NONE)
 		return -ENOENT;
 
 	return 0;

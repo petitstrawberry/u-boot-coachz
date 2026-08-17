@@ -96,7 +96,7 @@ SECTIONS
 	{
 		KEEP(*(.__secure_stack_start))
 
-		/* Skip addreses for stack */
+		/* Skip addresses for stack */
 		. = . + CONFIG_ARMV7_PSCI_NR_CPUS * ARM_PSCI_STACK_SIZE;
 
 		/* Align end of stack section to page boundary */
@@ -153,17 +153,18 @@ SECTIONS
 		__efi_runtime_rel_stop = .;
 	}
 
-	. = ALIGN(4);
+	. = ALIGN(8);
 	__image_copy_end = .;
 
 	/*
 	 * if CONFIG_USE_ARCH_MEMSET is not selected __bss_end - __bss_start
-	 * needs to be a multiple of 4 and we overlay .bss with .rel.dyn
+	 * needs to be a multiple of 8 and we overlay .bss with .rel.dyn
 	 */
-	.rel.dyn ALIGN(4) : {
+	.rel.dyn ALIGN(8) : {
 		__rel_dyn_start = .;
 		*(.rel*)
 		__rel_dyn_end = .;
+		. = ALIGN(8);
 	}
 
 	_end = .;
@@ -192,3 +193,6 @@ SECTIONS
 	/DISCARD/ : { *(.ARM.exidx*) }
 	/DISCARD/ : { *(.gnu.linkonce.armexidx.*) }
 }
+
+ASSERT(_image_binary_end % 8 == 0, \
+       "_image_binary_end must be 8-byte aligned for device tree");

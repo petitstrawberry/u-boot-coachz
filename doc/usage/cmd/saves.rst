@@ -72,7 +72,7 @@ the offset used in the *saves* command.
     Really kill this window [y/n]
     $ srec_cat out.srec -offset -1337982976 -Output out.txt -binary 2>/dev/null
     $ cat out.txt
-    setenv autoload no
+    env set autoload no
     dhcp
     load mmc 0:1 $fdt_addr_r dtb
     load mmc 0:1 $kernel_addr_r snp.efi
@@ -84,8 +84,3 @@ Configuration
 
 The command is only available if CONFIG_CMD_SAVES=y. The parameter to set the
 baud rate is only available if CONFIG_SYS_LOADS_BAUD_CHANGE=y
-
-Return value
-------------
-
-The return value $? is 0 (true) on success, 1 (false) otherwise.

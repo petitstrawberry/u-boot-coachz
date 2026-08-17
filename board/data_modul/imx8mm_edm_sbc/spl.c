@@ -27,8 +27,6 @@
 
 #include "../common/common.h"
 
-DECLARE_GLOBAL_DATA_PTR;
-
 int data_modul_imx_edm_sbc_board_power_init(void)
 {
 	struct udevice *dev;
@@ -61,7 +59,7 @@ int spl_board_boot_device(enum boot_device boot_dev_spl)
 {
 	if (boot_dev_spl == MMC3_BOOT)
 		return BOOT_DEVICE_MMC2;	/* eMMC */
-	else if (boot_dev_spl == MMC2_BOOT)
+	else if (boot_dev_spl == MMC2_BOOT || boot_dev_spl == SD2_BOOT)
 		return BOOT_DEVICE_MMC1;	/* SD */
 	else
 		return BOOT_DEVICE_BOARD;

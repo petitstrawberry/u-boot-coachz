@@ -74,9 +74,12 @@ struct bd_info;
 #define is_imx8mnud() (is_cpu_type(MXC_CPU_IMX8MNUD))
 #define is_imx8mnus() (is_cpu_type(MXC_CPU_IMX8MNUS))
 #define is_imx8mp() (is_cpu_type(MXC_CPU_IMX8MP)  || is_cpu_type(MXC_CPU_IMX8MPD) || \
-	is_cpu_type(MXC_CPU_IMX8MPL) || is_cpu_type(MXC_CPU_IMX8MP6) || is_cpu_type(MXC_CPU_IMX8MPUL))
+	is_cpu_type(MXC_CPU_IMX8MPL) || is_cpu_type(MXC_CPU_IMX8MP6) || is_cpu_type(MXC_CPU_IMX8MPUL) || \
+	is_cpu_type(MXC_CPU_IMX8MP5) || is_cpu_type(MXC_CPU_IMX8MPD2))
 #define is_imx8mpd() (is_cpu_type(MXC_CPU_IMX8MPD))
+#define is_imx8mpd2() (is_cpu_type(MXC_CPU_IMX8MPD2))
 #define is_imx8mpl() (is_cpu_type(MXC_CPU_IMX8MPL))
+#define is_imx8mp5() (is_cpu_type(MXC_CPU_IMX8MP5))
 #define is_imx8mp6() (is_cpu_type(MXC_CPU_IMX8MP6))
 #define is_imx8mpul() (is_cpu_type(MXC_CPU_IMX8MPUL))
 
@@ -96,6 +99,10 @@ struct bd_info;
 #define is_imx9311() (is_cpu_type(MXC_CPU_IMX9311))
 #define is_imx9302() (is_cpu_type(MXC_CPU_IMX9302))
 #define is_imx9301() (is_cpu_type(MXC_CPU_IMX9301))
+
+#define is_imx94() (is_cpu_type(MXC_CPU_IMX94))
+#define is_imx95() (is_cpu_type(MXC_CPU_IMX95))
+#define is_imx952() (is_cpu_type(MXC_CPU_IMX952))
 
 #define is_imx9121() (is_cpu_type(MXC_CPU_IMX9121))
 #define is_imx9111() (is_cpu_type(MXC_CPU_IMX9111))
@@ -215,6 +222,80 @@ ulong spl_romapi_get_uboot_base(u32 image_offset, u32 rom_bt_dev);
 
 u32 rom_api_download_image(u8 *dest, u32 offset, u32 size);
 u32 rom_api_query_boot_infor(u32 info_type, u32 *info);
+
+#if IS_ENABLED(CONFIG_SCMI_FIRMWARE)
+typedef struct rom_passover {
+	u16 tag;                   // Tag
+	u8  len;                   // Fixed value of 0x80
+	u8  ver;                   // Version
+	u32 boot_mode;             // Boot mode
+	u32 card_addr_mode;        // SD card address mode
+	u32 bad_blks_of_img_set0;  // NAND bad block count skipped 1
+	u32 ap_mu_id;              // AP MU ID
+	u32 bad_blks_of_img_set1;  // NAND bad block count skipped 1
+	u8  boot_stage;            // Boot stage
+	u8  img_set_sel;           // Image set booted from
+	u8  rsv0[2];               // Reserved
+	u32 img_set_end;           // Offset of Image End
+	u32 rom_version;           // ROM version
+	u8  boot_dev_state;        // Boot device state
+	u8  boot_dev_inst;         // Boot device type
+	u8  boot_dev_type;         // Boot device instance
+	u8  rsv1;                  // Reserved
+	u32 dev_page_size;         // Boot device page size
+	u32 cnt_header_ofs;        // Container header offset
+	u32 img_ofs;               // Image offset
+}  __packed rom_passover_t;
+
+/**
+ * struct scmi_rom_passover_out - Response payload for ROM_PASSOVER_GET command
+ * @status:	SCMI clock ID
+ * @attributes:	Attributes of the targets clock state
+ */
+struct scmi_rom_passover_get_out {
+	u32 status;
+	u32 numPassover;
+	u32 passover[(sizeof(rom_passover_t) + 8) / 4];
+};
+
+/**
+ * struct scmi_ddr_info_out - Get DDR memory region info
+ * @status: Error code
+ * @attributes: Region attributes:
+ *              Bit[31] ECC enable.
+ *              Set to 1 if ECC enabled.
+ *              Set to 0 if ECC disabled or not configured.
+ *              Bits[30:18] Reserved, must be zero.
+ *              Bits[17:16] Number of DDR memory regions.
+ *              Bits[15:11] Reserved, must be zero.
+ *              Bits[10:8] Width.
+ *              Bus width is 16 << this field.
+ *              So 0=16, 1=32, 2=64, etc.
+ *              Bits[7:5] Reserved, must be zero.
+ *              Bits[4:0] DDR type.
+ *              Set to 0 if LPDDR5.
+ *              Set to 1 if LPDDR5X.
+ *              Set to 2 if LPDDR4.
+ *              Set to 3 if LPDDR4X
+ * @mts: DDR speed in megatransfers per second
+ * @startlow: The lower 32 bits of the physical start address of the region
+ * @starthigh: The upper 32 bits of the physical start address of the region
+ * @endlow: The lower 32 bits of the physical end address of the region. This
+ *          excludes any DDR used to store ECC data
+ * @endhigh: The upper 32 bits of the physical end address of the region. This
+ *           excludes any DDR used to store ECC data
+ */
+struct scmi_ddr_info_out {
+	s32 status;
+	u32 attributes;
+	u32 mts;
+	u32 startlow;
+	u32 starthigh;
+	u32 endlow;
+	u32 endhigh;
+};
+
+#endif
 
 /* For i.MX ULP */
 #define BT0CFG_LPBOOT_MASK	0x1

@@ -5,10 +5,12 @@
  * Graeme Russ, <graeme.russ@gmail.com>
  */
 
-#include <cb_sysinfo.h>
 #include <init.h>
 #include <asm/e820.h>
+#include <cb_sysinfo.h>
 #include <asm/global_data.h>
+
+DECLARE_GLOBAL_DATA_PTR;
 
 unsigned int install_e820_map(unsigned int max_entries,
 			      struct e820_entry *entries)
@@ -23,7 +25,7 @@ phys_addr_t board_get_usable_ram_top(phys_size_t total_size)
 
 int dram_init(void)
 {
-	return coreboot_dram_init()
+	return coreboot_dram_init();
 }
 
 int dram_init_banksize(void)

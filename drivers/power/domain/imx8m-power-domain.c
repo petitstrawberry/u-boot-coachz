@@ -7,7 +7,6 @@
 #include <dm.h>
 #include <malloc.h>
 #include <power-domain-uclass.h>
-#include <asm/global_data.h>
 #include <asm/io.h>
 #include <asm/mach-imx/sys_proto.h>
 #include <dm/device-internal.h>
@@ -21,8 +20,6 @@
 #include <dt-bindings/power/imx8mn-power.h>
 #include <dt-bindings/power/imx8mp-power.h>
 #include <dt-bindings/power/imx8mq-power.h>
-
-DECLARE_GLOBAL_DATA_PTR;
 
 #define GPC_PGC_CPU_MAPPING			0x0ec
 #define IMX8MP_GPC_PGC_CPU_MAPPING		0x1cc
@@ -468,6 +465,8 @@ out_clk_disable:
 static int imx8m_power_domain_of_xlate(struct power_domain *power_domain,
 				      struct ofnode_phandle_args *args)
 {
+	power_domain->id = 0;
+
 	return 0;
 }
 
@@ -477,7 +476,7 @@ static int imx8m_power_domain_bind(struct udevice *dev)
 	const char *name;
 	int ret = 0;
 
-	ofnode_for_each_subnode(subnode, dev_ofnode(dev)) {
+	dev_for_each_subnode(subnode, dev) {
 		/* Bind the subnode to this driver */
 		name = ofnode_get_name(subnode);
 
@@ -506,7 +505,11 @@ static int imx8m_power_domain_bind(struct udevice *dev)
 static int imx8m_power_domain_probe(struct udevice *dev)
 {
 	struct imx8m_power_domain_plat *pdata = dev_get_plat(dev);
+	struct power_domain_plat *plat = dev_get_uclass_plat(dev);
 	int ret;
+
+	/* Every subdomain has its own device node */
+	plat->subdomains = 1;
 
 	/* Nothing to do for non-"power-domain" driver instances. */
 	if (!strstr(dev->name, "power-domain"))
@@ -528,7 +531,7 @@ static int imx8m_power_domain_of_to_plat(struct udevice *dev)
 	struct imx_pgc_domain_data *domain_data =
 		(struct imx_pgc_domain_data *)dev_get_driver_data(dev);
 
-	pdata->resource_id = ofnode_read_u32_default(dev_ofnode(dev), "reg", -1);
+	pdata->resource_id = dev_read_u32_default(dev, "reg", -1);
 	pdata->domain = &domain_data->domains[pdata->resource_id];
 	pdata->regs = domain_data->pgc_regs;
 	pdata->base = dev_read_addr_ptr(dev->parent);
@@ -555,7 +558,7 @@ static const struct udevice_id imx8m_power_domain_ids[] = {
 	{ }
 };
 
-struct power_domain_ops imx8m_power_domain_ops = {
+static const struct power_domain_ops imx8m_power_domain_ops = {
 	.on = imx8m_power_domain_on,
 	.off = imx8m_power_domain_off,
 	.of_xlate = imx8m_power_domain_of_xlate,

@@ -119,7 +119,7 @@ ENTRY(_main)
 	ldr	x9, _TEXT_BASE		/* x9 <- Linked value of _start */
 	sub	x9, x9, x0		/* x9 <- Run-vs-link offset */
 	add	lr, lr, x9
-#if defined(CONFIG_SYS_RELOC_GD_ENV_ADDR)
+#if defined(CONFIG_ENV_RELOC_GD_ENV_ADDR)
 	ldr	x0, [x18, #GD_ENV_ADDR]	/* x0 <- gd->env_addr */
 	add	x0, x0, x9
 	str	x0, [x18, #GD_ENV_ADDR]
@@ -158,8 +158,10 @@ relocation_return:
 /*
  * Clear BSS section
  */
-	ldr	x0, =__bss_start		/* this is auto-relocated! */
-	ldr	x1, =__bss_end			/* this is auto-relocated! */
+	adrp	x0, __bss_start
+	add	x0, x0, #:lo12:__bss_start
+	adrp	x1, __bss_end
+	add	x1, x1, #:lo12:__bss_end
 clear_loop:
 	str	xzr, [x0], #8
 	cmp	x0, x1

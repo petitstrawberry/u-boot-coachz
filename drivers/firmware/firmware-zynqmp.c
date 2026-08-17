@@ -3,9 +3,11 @@
  * Xilinx Zynq MPSoC Firmware driver
  *
  * Copyright (C) 2018-2019 Xilinx, Inc.
+ * Copyright (C) 2022 - 2026, Advanced Micro Devices, Inc.
  */
 
 #include <asm/arch/hardware.h>
+#include <asm/arch/sys_proto.h>
 #include <asm/io.h>
 #include <cpu_func.h>
 #include <dm.h>
@@ -15,10 +17,12 @@
 #include <zynqmp_firmware.h>
 #include <asm/cache.h>
 #include <asm/ptrace.h>
+#include <asm/system.h>
+#include <linux/bitfield.h>
+#include <linux/delay.h>
 
 #if defined(CONFIG_ZYNQMP_IPI)
 #include <mailbox.h>
-#include <asm/arch/sys_proto.h>
 
 #define PMUFW_PAYLOAD_ARG_CNT	8
 
@@ -158,7 +162,7 @@ unsigned int zynqmp_firmware_version(void)
 	if (pm_api_version == ZYNQMP_PM_VERSION_INVALID) {
 
 		ret = xilinx_pm_request(PM_GET_API_VERSION, 0, 0, 0, 0,
-					ret_payload);
+					0, 0, ret_payload);
 		if (ret)
 			panic("PMUFW is not found - Please load it!\n");
 
@@ -172,28 +176,158 @@ unsigned int zynqmp_firmware_version(void)
 };
 
 #if defined(CONFIG_ARCH_VERSAL2)
-int zynqmp_pm_ufs_get_txrx_cfgrdy(u32 *value)
+/*
+ * Poll the M-PHY TX/RX config-ready status until it settles or @timeout_us
+ * elapses. Legacy EEMI firmware only offers the per-read status primitive, so
+ * the poll loop lives here rather than in the UFS driver; the timeout budget is
+ * owned by the caller.
+ */
+int zynqmp_pm_wait_mphy_tx_rx_config_ready(u32 timeout_us)
 {
-	*value = readl(PMXC_SLCR_BASE_ADDRESS + PMXC_TX_RX_CFG_RDY);
-	return 0;
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
+
+	while (timeout_us--) {
+		ret = xilinx_pm_request(PM_IOCTL, PM_REGNODE_PMC_IOU_SLCR,
+					IOCTL_READ_REG, TXRX_CFGRDY_OFFSET, 0, 0,
+					0, ret_payload);
+		if (ret)
+			return ret;
+
+		if (!(ret_payload[1] & TX_RX_CFG_RDY_MASK))
+			return 0;
+
+		udelay(1);
+	}
+
+	return -ETIMEDOUT;
 }
 
-int zynqmp_pm_ufs_sram_csr_read(u32 *value)
+int zynqmp_pm_wait_sram_init_done(u32 timeout_us)
 {
-	*value = readl(PMXC_SLCR_BASE_ADDRESS + PMXC_SRAM_CSR);
-	return 0;
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
+
+	while (timeout_us--) {
+		ret = xilinx_pm_request(PM_IOCTL, PM_REGNODE_PMC_IOU_SLCR,
+					IOCTL_READ_REG, SRAM_CSR_OFFSET, 0, 0,
+					0, ret_payload);
+		if (ret)
+			return ret;
+
+		if (ret_payload[1] & SRAM_CSR_INIT_DONE_MASK)
+			return 0;
+
+		udelay(1);
+	}
+
+	return -ETIMEDOUT;
 }
 
-int zynqmp_pm_ufs_sram_csr_write(u32 *value)
+int zynqmp_pm_set_sram_bypass(void)
 {
-	writel(*value, PMXC_SLCR_BASE_ADDRESS + PMXC_SRAM_CSR);
-	return 0;
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+	u32 sram_csr;
+	int ret;
+
+	ret = zynqmp_pm_is_function_supported(PM_IOCTL, IOCTL_MASK_WRITE_REG);
+	if (ret) {
+		printf("%s: IOCTL_MASK_WRITE_REG is not supported : %d\n"
+			, __func__, ret);
+		return 0;
+	}
+
+	ret = xilinx_pm_request(PM_IOCTL, PM_REGNODE_PMC_IOU_SLCR,
+				IOCTL_READ_REG, SRAM_CSR_OFFSET, 0, 0,
+				0, ret_payload);
+	if (ret)
+		return ret;
+
+	sram_csr = ret_payload[1];
+	sram_csr &= ~SRAM_CSR_EXT_LD_DONE_MASK;
+	sram_csr |= SRAM_CSR_BYPASS_MASK;
+
+	return xilinx_pm_request(PM_IOCTL, PM_REGNODE_PMC_IOU_SLCR,
+				 IOCTL_MASK_WRITE_REG, SRAM_CSR_OFFSET,
+				 GENMASK(2, 1), sram_csr, 0, NULL);
 }
 
-int zynqmp_pm_ufs_cal_reg(u32 *value)
+int zynqmp_pm_get_ufs_calibration_values(u32 *value)
 {
-	*value = readl(PMXC_EFUSE_CACHE_BASE_ADDRESS + PMXC_UFS_CAL_1_OFFSET);
-	return 0;
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
+
+	if (!value)
+		return -EINVAL;
+
+	ret = zynqmp_pm_is_function_supported(PM_IOCTL, IOCTL_READ_REG);
+	if (ret) {
+		printf("%s: IOCTL_READ_REG is not supported : %d\n"
+			, __func__, ret);
+		return 0;
+	}
+
+	ret = xilinx_pm_request(PM_IOCTL, PM_REGNODE_EFUSE_CACHE,
+				IOCTL_READ_REG, UFS_CAL_1_OFFSET, 0, 0,
+				0, ret_payload);
+	if (ret)
+		return ret;
+
+	*value = ret_payload[1];
+
+	return ret;
+}
+#endif /* CONFIG_ARCH_VERSAL2 */
+
+#if defined(CONFIG_ARCH_VERSAL) || defined(CONFIG_ARCH_VERSAL2)
+u32 zynqmp_pm_get_pmc_global_pggs_reg(u32 reg_addr)
+{
+	int ret;
+	u32 value = 0;
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+
+	if (reg_addr == PMC_GLOBAL_PGGS3_REG) {
+		value = 0;
+	} else if (reg_addr == PMC_GLOBAL_PGGS4_REG) {
+		value = 1;
+	} else {
+		printf("%s: not supported pggs register 0x%x\n",
+		       __func__, reg_addr);
+		return 0;
+	}
+
+	ret = zynqmp_pm_is_function_supported(PM_IOCTL, IOCTL_READ_PGGS);
+	if (ret) {
+		ret = zynqmp_pm_is_function_supported(PM_IOCTL, IOCTL_READ_REG);
+		if (ret) {
+			printf("%s: IOCTL_READ_REG is not supported : %d\n"
+				, __func__, ret);
+			return 0;
+		}
+
+		/* find node ID from the pggs3 offset */
+		value = PM_REG_PGGS3 + value;
+
+		ret = xilinx_pm_request(PM_IOCTL, value,
+					IOCTL_READ_REG, 0, 0, 0, 0,
+					ret_payload);
+		if (ret) {
+			printf("%s: node 0x%x get pggs register failed\n",
+			       __func__, value);
+			return 0;
+		}
+	} else {
+		ret = xilinx_pm_request(PM_IOCTL, PMC_GLOBAL_PGGS3_REG_NODE,
+					IOCTL_READ_PGGS, value, 0, 0, 0,
+					ret_payload);
+		if (ret) {
+			printf("%s: node 0x%x get pggs register failed\n",
+			       __func__, PMC_GLOBAL_PGGS3_REG_NODE);
+			return 0;
+		}
+	}
+
+	return ret_payload[1];
 }
 #endif
 
@@ -202,7 +336,7 @@ int zynqmp_pm_set_gem_config(u32 node, enum pm_gem_config_type config, u32 value
 	int ret;
 
 	ret = xilinx_pm_request(PM_IOCTL, node, IOCTL_SET_GEM_CONFIG,
-				config, value, NULL);
+				config, value, 0, 0, NULL);
 	if (ret)
 		printf("%s: node %d: set_gem_config %d failed\n",
 		       __func__, node, config);
@@ -215,7 +349,7 @@ int zynqmp_pm_set_sd_config(u32 node, enum pm_sd_config_type config, u32 value)
 	int ret;
 
 	ret = xilinx_pm_request(PM_IOCTL, node, IOCTL_SET_SD_CONFIG,
-				config, value, NULL);
+				config, value, 0, 0, NULL);
 	if (ret)
 		printf("%s: node %d: set_sd_config %d failed\n",
 		       __func__, node, config);
@@ -236,7 +370,7 @@ u32 zynqmp_pm_get_bootmode_reg(void)
 	}
 
 	ret = xilinx_pm_request(PM_IOCTL, CRP_BOOT_MODE_REG_NODE, IOCTL_READ_REG,
-				CRP_BOOT_MODE_REG_OFFSET, 0, ret_payload);
+				CRP_BOOT_MODE_REG_OFFSET, 0, 0, 0, ret_payload);
 	if (ret) {
 		printf("%s: node 0x%x: get_bootmode 0x%x failed\n",
 		       __func__, CRP_BOOT_MODE_REG_NODE, CRP_BOOT_MODE_REG_OFFSET);
@@ -246,6 +380,7 @@ u32 zynqmp_pm_get_bootmode_reg(void)
 	return ret_payload[1];
 }
 
+#if defined(CONFIG_ARCH_VERSAL) || defined(CONFIG_ARCH_VERSAL2)
 u32 zynqmp_pm_get_pmc_multi_boot_reg(void)
 {
 	int ret;
@@ -259,7 +394,8 @@ u32 zynqmp_pm_get_pmc_multi_boot_reg(void)
 	}
 
 	ret = xilinx_pm_request(PM_IOCTL, PM_REG_PMC_GLOBAL_NODE, IOCTL_READ_REG,
-				PMC_MULTI_BOOT_MODE_REG_OFFSET, 0, ret_payload);
+				PMC_MULTI_BOOT_MODE_REG_OFFSET, 0, 0, 0,
+				ret_payload);
 	if (ret) {
 		printf("%s: node 0x%x: get_bootmode 0x%x failed\n",
 		       __func__, PM_REG_PMC_GLOBAL_NODE, PMC_MULTI_BOOT_MODE_REG_OFFSET);
@@ -268,6 +404,94 @@ u32 zynqmp_pm_get_pmc_multi_boot_reg(void)
 
 	return ret_payload[1];
 }
+#endif
+
+#if defined(CONFIG_ARCH_VERSAL)
+u32 versal_pmc_multi_boot(void)
+{
+	/* At EL3 the SMC path to firmware is unavailable, read directly */
+	if (current_el() == 3)
+		return versal_multi_boot_reg();
+
+	return zynqmp_pm_get_pmc_multi_boot_reg() & PMC_MULTI_BOOT_MASK;
+}
+
+u8 versal_get_bootmode(void)
+{
+	u32 reg;
+
+	/* At EL3 the SMC path to firmware is unavailable, read directly */
+	if (current_el() == 3)
+		reg = versal_bootmode_reg();
+	else
+		reg = zynqmp_pm_get_bootmode_reg();
+
+	if (reg >> BOOT_MODE_ALT_SHIFT)
+		reg >>= BOOT_MODE_ALT_SHIFT;
+
+	return reg & BOOT_MODES_MASK;
+}
+#endif
+
+#if defined(CONFIG_ARCH_VERSAL_NET)
+u8 versal_net_get_bootmode(void)
+{
+	u32 reg;
+
+	/* At EL3 the SMC path to firmware is unavailable, read directly */
+	if (current_el() == 3)
+		reg = versal_net_bootmode_reg();
+	else
+		reg = zynqmp_pm_get_bootmode_reg();
+
+	if (reg >> BOOT_MODE_ALT_SHIFT)
+		reg >>= BOOT_MODE_ALT_SHIFT;
+
+	return reg & BOOT_MODES_MASK;
+}
+#endif
+
+#if defined(CONFIG_ARCH_ZYNQMP)
+int zynqmp_mmio_write(const u32 address, const u32 mask, const u32 value)
+{
+	/* At EL3 or in SPL the firmware (SMC) path is unavailable */
+	if (IS_ENABLED(CONFIG_XPL_BUILD) || current_el() == 3)
+		return zynqmp_mmio_rawwrite(address, mask, value);
+
+	return xilinx_pm_request(PM_MMIO_WRITE, address, mask, value,
+				 0, 0, 0, NULL);
+}
+
+int zynqmp_mmio_read(const u32 address, u32 *value)
+{
+	u32 ret_payload[PAYLOAD_ARG_CNT];
+	int ret;
+
+	if (!value)
+		return -EINVAL;
+
+	/* At EL3 or in SPL the firmware (SMC) path is unavailable */
+	if (IS_ENABLED(CONFIG_XPL_BUILD) || current_el() == 3)
+		return zynqmp_mmio_rawread(address, value);
+
+	ret = xilinx_pm_request(PM_MMIO_READ, address, 0, 0, 0, 0, 0,
+				ret_payload);
+	*value = ret_payload[1];
+
+	return ret;
+}
+#endif
+
+#if defined(CONFIG_ARCH_VERSAL2)
+u32 versal2_pmc_multi_boot(void)
+{
+	/* At EL3 the SMC path to firmware is unavailable, read directly */
+	if (current_el() == 3)
+		return versal2_multi_boot_reg();
+
+	return zynqmp_pm_get_pmc_multi_boot_reg() & PMC_MULTI_BOOT_MASK;
+}
+#endif
 
 int zynqmp_pm_feature(const u32 api_id)
 {
@@ -276,7 +500,7 @@ int zynqmp_pm_feature(const u32 api_id)
 
 	/* Check feature check API version */
 	ret = xilinx_pm_request(PM_FEATURE_CHECK, api_id, 0, 0, 0,
-				ret_payload);
+				0, 0, ret_payload);
 	if (ret)
 		return ret;
 
@@ -296,7 +520,7 @@ int zynqmp_pm_is_function_supported(const u32 api_id, const u32 id)
 
 	/* Check feature check API version */
 	ret = xilinx_pm_request(PM_FEATURE_CHECK, PM_FEATURE_CHECK, 0, 0, 0,
-				ret_payload);
+				0, 0, ret_payload);
 	if (ret)
 		return ret;
 
@@ -308,7 +532,7 @@ int zynqmp_pm_is_function_supported(const u32 api_id, const u32 id)
 		 */
 
 		ret = xilinx_pm_request(PM_FEATURE_CHECK, api_id, 0, 0, 0,
-					ret_payload);
+					0, 0, ret_payload);
 		if (ret)
 			return ret;
 
@@ -340,7 +564,7 @@ int zynqmp_pmufw_load_config_object(const void *cfg_obj, size_t size)
 	flush_dcache_range((ulong)cfg_obj, (ulong)(cfg_obj + size));
 
 	err = xilinx_pm_request(PM_SET_CONFIGURATION, (u32)(u64)cfg_obj, 0, 0,
-				0, ret_payload);
+				0, 0, 0, ret_payload);
 	if (err == XST_PM_NO_ACCESS) {
 		return -EACCES;
 	}
@@ -422,20 +646,180 @@ U_BOOT_DRIVER(zynqmp_power) = {
 };
 #endif
 
-int __maybe_unused xilinx_pm_request(u32 api_id, u32 arg0, u32 arg1, u32 arg2,
-				     u32 arg3, u32 *ret_payload)
+static const char *const pinctrl_functions[] = {
+	"can0",
+	"can1",
+	"ethernet0",
+	"ethernet1",
+	"ethernet2",
+	"ethernet3",
+	"gemtsu0",
+	"gpio0",
+	"i2c0",
+	"i2c1",
+	"mdio0",
+	"mdio1",
+	"mdio2",
+	"mdio3",
+	"qspi0",
+	"qspi_fbclk",
+	"qspi_ss",
+	"spi0",
+	"spi1",
+	"spi0_ss",
+	"spi1_ss",
+	"sdio0",
+	"sdio0_pc",
+	"sdio0_cd",
+	"sdio0_wp",
+	"sdio1",
+	"sdio1_pc",
+	"sdio1_cd",
+	"sdio1_wp",
+	"nand0",
+	"nand0_ce",
+	"nand0_rb",
+	"nand0_dqs",
+	"ttc0_clk",
+	"ttc0_wav",
+	"ttc1_clk",
+	"ttc1_wav",
+	"ttc2_clk",
+	"ttc2_wav",
+	"ttc3_clk",
+	"ttc3_wav",
+	"uart0",
+	"uart1",
+	"usb0",
+	"usb1",
+	"swdt0_clk",
+	"swdt0_rst",
+	"swdt1_clk",
+	"swdt1_rst",
+	"pmu0",
+	"pcie0",
+	"csu0",
+	"dpaux0",
+	"pjtag0",
+	"trace0",
+	"trace0_clk",
+	"testscan0",
+};
+
+/*
+ * PM_QUERY_DATA is implemented by ATF and not the PMU firmware, so we have to
+ * emulate it in SPL. Just implement functions/pins since the groups take up a
+ * lot of rodata and are mostly superfluous.
+ */
+static int zynqmp_pm_query_data(enum pm_query_id qid, u32 arg1, u32 arg2,
+				u32 *ret_payload)
 {
-	debug("%s at EL%d, API ID: 0x%0x, 0x%0x, 0x%0x, 0x%0x, 0x%0x\n",
-	      __func__, current_el(), api_id, arg0, arg1, arg2, arg3);
+	switch (qid) {
+	case PM_QID_PINCTRL_GET_NUM_PINS:
+		ret_payload[1] = 78; /* NUM_PINS */
+		ret_payload[0] = 0;
+		return 0;
+	case PM_QID_PINCTRL_GET_NUM_FUNCTIONS:
+		ret_payload[1] = ARRAY_SIZE(pinctrl_functions);
+		ret_payload[0] = 0;
+		return 0;
+	case PM_QID_PINCTRL_GET_NUM_FUNCTION_GROUPS:
+		ret_payload[1] = 0;
+		ret_payload[0] = 0;
+		return 0;
+	case PM_QID_PINCTRL_GET_FUNCTION_NAME:
+		assert(arg1 < ARRAY_SIZE(pinctrl_functions));
+		memset(ret_payload, 0, MAX_FUNC_NAME_LEN);
+		strcpy((char *)ret_payload, pinctrl_functions[arg1]);
+		return 0;
+	case PM_QID_PINCTRL_GET_FUNCTION_GROUPS:
+	case PM_QID_PINCTRL_GET_PIN_GROUPS:
+		memset(ret_payload + 1, 0xff,
+		       sizeof(s16) * NUM_GROUPS_PER_RESP);
+		ret_payload[0] = 0;
+		return 0;
+	default:
+		ret_payload[0] = 1;
+		return 1;
+	}
+}
+
+smc_call_handler_t __data smc_call_handler;
+
+static int smc_call_legacy(u32 api_id, u32 arg0, u32 arg1, u32 arg2,
+			   u32 arg3, u32 arg4, u32 arg5, u32 *ret_payload)
+{
+	struct pt_regs regs;
+
+	regs.regs[0] = PM_SIP_SVC | api_id;
+	regs.regs[1] = ((u64)arg1 << 32) | arg0;
+	regs.regs[2] = ((u64)arg3 << 32) | arg2;
+	regs.regs[3] = arg4;
+
+	smc_call(&regs);
+
+	if (ret_payload) {
+		ret_payload[0] = (u32)regs.regs[0];
+		ret_payload[1] = upper_32_bits(regs.regs[0]);
+		ret_payload[2] = (u32)regs.regs[1];
+		ret_payload[3] = upper_32_bits(regs.regs[1]);
+		ret_payload[4] = (u32)regs.regs[2];
+		ret_payload[5] = upper_32_bits((u32)regs.regs[2]);
+		ret_payload[6] = (u32)regs.regs[3];
+	}
+
+	return (ret_payload) ? ret_payload[0] : 0;
+}
+
+static int smc_call_enhanced(u32 api_id, u32 arg0, u32 arg1, u32 arg2,
+			     u32 arg3, u32 arg4, u32 arg5, u32 *ret_payload)
+{
+	struct pt_regs regs;
+	u32 module_id = FIELD_GET(PLM_MODULE_ID_MASK, api_id);
+
+	if (module_id == 0)
+		module_id = PM_MODULE_ID;
+
+	regs.regs[0] = PM_SIP_SVC | PASS_THROUGH_FW_CMD_ID;
+	regs.regs[1] = ((u64)arg0 << 32U) |
+			FIELD_PREP(PLM_MODULE_ID_MASK, module_id) |
+			(api_id & API_ID_MASK);
+	regs.regs[2] = arg1 | ((u64)arg2 << 32);
+	regs.regs[3] = arg3 | ((u64)arg4 << 32);
+	regs.regs[4] = arg5;
+
+	smc_call(&regs);
+
+	if (ret_payload) {
+		ret_payload[0] = regs.regs[0];
+		ret_payload[1] = upper_32_bits(regs.regs[0]);
+		ret_payload[2] = (u32)regs.regs[1];
+		ret_payload[3] = upper_32_bits(regs.regs[1]);
+		ret_payload[4] = (u32)regs.regs[2];
+		ret_payload[5] = upper_32_bits((u32)regs.regs[2]);
+		ret_payload[6] = (u32)regs.regs[3];
+	}
+
+	return regs.regs[0];
+}
+
+int __maybe_unused xilinx_pm_request(u32 api_id, u32 arg0, u32 arg1, u32 arg2,
+				     u32 arg3, u32 arg4, u32 arg5, u32 *ret_payload)
+{
+	debug("%s at EL%d, API ID: 0x%0x, 0x%0x, 0x%0x, 0x%0x, 0x%0x, 0x%0x, 0x%0x\n",
+	      __func__, current_el(), api_id, arg0, arg1, arg2, arg3, arg4, arg5);
 
 	if (IS_ENABLED(CONFIG_XPL_BUILD) || current_el() == 3) {
+		if (CONFIG_IS_ENABLED(PINCTRL_ZYNQMP) &&
+		    api_id == PM_QUERY_DATA)
+			return zynqmp_pm_query_data(arg0, arg1, arg2, ret_payload);
 #if defined(CONFIG_ZYNQMP_IPI)
 		/*
 		 * Use fixed payload and arg size as the EL2 call. The firmware
 		 * is capable to handle PMUFW_PAYLOAD_ARG_CNT bytes but the
 		 * firmware API is limited by the SMC call size
 		 */
-		u32 regs[] = {api_id, arg0, arg1, arg2, arg3};
+		u32 regs[] = {api_id, arg0, arg1, arg2, arg3, arg4, arg5};
 		int ret;
 
 		if (api_id == PM_FPGA_LOAD) {
@@ -450,38 +834,22 @@ int __maybe_unused xilinx_pm_request(u32 api_id, u32 arg0, u32 arg1, u32 arg2,
 			      PAYLOAD_ARG_CNT);
 		if (ret)
 			return ret;
+
+		return (ret_payload) ? ret_payload[0] : 0;
 #else
 		return -EPERM;
 #endif
-	} else {
-		/*
-		 * Added SIP service call Function Identifier
-		 * Make sure to stay in x0 register
-		 */
-		struct pt_regs regs;
-
-		regs.regs[0] = PM_SIP_SVC | api_id;
-		regs.regs[1] = ((u64)arg1 << 32) | arg0;
-		regs.regs[2] = ((u64)arg3 << 32) | arg2;
-
-		smc_call(&regs);
-
-		if (ret_payload) {
-			ret_payload[0] = (u32)regs.regs[0];
-			ret_payload[1] = upper_32_bits(regs.regs[0]);
-			ret_payload[2] = (u32)regs.regs[1];
-			ret_payload[3] = upper_32_bits(regs.regs[1]);
-			ret_payload[4] = (u32)regs.regs[2];
-		}
-
 	}
-	return (ret_payload) ? ret_payload[0] : 0;
+
+	return smc_call_handler(api_id, arg0, arg1, arg2, arg3, arg4,
+				arg5, ret_payload);
 }
 
 static const struct udevice_id zynqmp_firmware_ids[] = {
-	{ .compatible = "xlnx,zynqmp-firmware" },
-	{ .compatible = "xlnx,versal-firmware"},
-	{ .compatible = "xlnx,versal-net-firmware"},
+	{ .compatible = "xlnx,zynqmp-firmware", .data = (ulong)smc_call_legacy },
+	{ .compatible = "xlnx,versal-firmware", .data = (ulong)smc_call_legacy},
+	{ .compatible = "xlnx,versal-net-firmware", .data = (ulong)smc_call_legacy },
+	{ .compatible = "xlnx,versal2-firmware", .data = (ulong)smc_call_enhanced},
 	{ }
 };
 
@@ -490,11 +858,12 @@ static int zynqmp_firmware_bind(struct udevice *dev)
 	int ret;
 	struct udevice *child;
 
-	if ((IS_ENABLED(CONFIG_XPL_BUILD) &&
-	     IS_ENABLED(CONFIG_SPL_POWER_DOMAIN) &&
-	     IS_ENABLED(CONFIG_ZYNQMP_POWER_DOMAIN)) ||
-	     (!IS_ENABLED(CONFIG_XPL_BUILD) &&
-	      IS_ENABLED(CONFIG_ZYNQMP_POWER_DOMAIN))) {
+	smc_call_handler = (smc_call_handler_t)dev_get_driver_data(dev);
+	if (!smc_call_handler)
+		return -EINVAL;
+
+	if (CONFIG_IS_ENABLED(POWER_DOMAIN) &&
+	    IS_ENABLED(CONFIG_ZYNQMP_POWER_DOMAIN)) {
 		ret = device_bind_driver_to_node(dev, "zynqmp_power_domain",
 						 "zynqmp_power_domain",
 						 dev_ofnode(dev), &child);

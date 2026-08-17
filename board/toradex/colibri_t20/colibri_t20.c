@@ -13,7 +13,6 @@
 #include <asm/arch-tegra/ap.h>
 #include <asm/arch-tegra/board.h>
 #include <asm/arch-tegra/tegra.h>
-#include <asm/global_data.h>
 #include <asm/gpio.h>
 #include <asm/io.h>
 #include <i2c.h>
@@ -21,15 +20,13 @@
 #include <linux/delay.h>
 #include "../common/tdx-common.h"
 
-DECLARE_GLOBAL_DATA_PTR;
-
 #define PMU_I2C_ADDRESS		0x34
 #define MAX_I2C_RETRY		3
 #define PMU_SUPPLYENE		0x14
 #define PMU_SUPPLYENE_SYSINEN	(1<<5)
 #define PMU_SUPPLYENE_EXITSLREQ	(1<<1)
 
-int arch_misc_init(void)
+int misc_init_r(void)
 {
 	/* Disable PMIC sleep mode on low supply voltage */
 	struct udevice *dev;

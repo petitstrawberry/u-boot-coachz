@@ -111,6 +111,33 @@ int regulator_get_suspend_value(struct udevice *dev)
 	return ops->get_suspend_value(dev);
 }
 
+int regulator_set_value_clamp(struct udevice *dev,
+			      int min_uV, int target_uV, int max_uV)
+{
+	const struct dm_regulator_ops *ops = dev_get_driver_ops(dev);
+	struct dm_regulator_uclass_plat *uc_pdata;
+	int uV;
+
+	if (!ops || !ops->set_value)
+		return -ENOSYS;
+
+	uc_pdata = dev_get_uclass_plat(dev);
+	if (uc_pdata->min_uV != -ENODATA && max_uV < uc_pdata->min_uV)
+		return -EINVAL;
+	if (uc_pdata->max_uV != -ENODATA && min_uV > uc_pdata->max_uV)
+		return -EINVAL;
+	if (min_uV > max_uV)
+		return -EINVAL;
+
+	if (uc_pdata->min_uV != -ENODATA)
+		min_uV = max(min_uV, uc_pdata->min_uV);
+	if (uc_pdata->max_uV != -ENODATA)
+		max_uV = min(max_uV, uc_pdata->max_uV);
+	uV = clamp(target_uV, min_uV, max_uV);
+
+	return regulator_set_value(dev, uV);
+}
+
 /*
  * To be called with at most caution as there is no check
  * before setting the actual voltage value.
@@ -260,13 +287,13 @@ int regulator_get_by_platname(const char *plat_name, struct udevice **devp)
 
 	*devp = NULL;
 
-	for (ret = uclass_find_first_device(UCLASS_REGULATOR, &dev); dev;
-	     ret = uclass_find_next_device(&dev)) {
-		if (ret) {
-			dev_dbg(dev, "ret=%d\n", ret);
-			continue;
-		}
+	ret = uclass_find_first_device(UCLASS_REGULATOR, &dev);
+	if (ret) {
+		dev_dbg(dev, "ret=%d\n", ret);
+		return ret;
+	}
 
+	for (; dev; uclass_find_next_device(&dev)) {
 		uc_pdata = dev_get_uclass_plat(dev);
 		if (!uc_pdata || strcmp(plat_name, uc_pdata->name))
 			continue;
@@ -389,7 +416,7 @@ int regulator_list_autoset(const char *list_platname[],
 		ret = regulator_autoset_by_name(list_platname[i], &dev);
 		if (ret != -EMEDIUMTYPE && verbose)
 			regulator_show(dev, ret);
-		if (ret & !error)
+		if (ret && ret != -EALREADY && !error)
 			error = ret;
 
 		if (list_devp)
@@ -410,9 +437,12 @@ static bool regulator_name_is_unique(struct udevice *check_dev,
 	int ret;
 	int len;
 
-	for (ret = uclass_find_first_device(UCLASS_REGULATOR, &dev); dev;
-	     ret = uclass_find_next_device(&dev)) {
-		if (ret || dev == check_dev)
+	ret = uclass_find_first_device(UCLASS_REGULATOR, &dev);
+	if (ret)
+		return true;
+
+	for (; dev; uclass_find_next_device(&dev)) {
+		if (dev == check_dev)
 			continue;
 
 		uc_pdata = dev_get_uclass_plat(dev);
@@ -446,7 +476,7 @@ static int regulator_post_bind(struct udevice *dev)
 	}
 
 	if (!regulator_name_is_unique(dev, uc_pdata->name)) {
-		dev_err(dev, "'%s' has nonunique value: '%s\n",
+		dev_err(dev, "'%s' has nonunique value: '%s'\n",
 			property, uc_pdata->name);
 		return -EINVAL;
 	}

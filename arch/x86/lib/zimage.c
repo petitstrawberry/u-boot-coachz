@@ -30,12 +30,9 @@
 #include <asm/bootm.h>
 #include <asm/bootparam.h>
 #include <asm/efi.h>
-#include <asm/global_data.h>
 #include <linux/compiler.h>
 #include <linux/ctype.h>
 #include <linux/libfdt.h>
-
-DECLARE_GLOBAL_DATA_PTR;
 
 /*
  * Memory lay-out:

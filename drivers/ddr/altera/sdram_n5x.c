@@ -346,25 +346,25 @@ struct ddr_handoff {
 	phys_addr_t cntlr_base;
 	size_t cntlr_total_length;
 	enum ddr_type cntlr_t;
-	size_t cntlr_handoff_length;
+	int cntlr_handoff_length;
 
 	/* Second controller attributes*/
 	phys_addr_t cntlr2_handoff_base;
 	phys_addr_t cntlr2_base;
 	size_t cntlr2_total_length;
 	enum ddr_type cntlr2_t;
-	size_t cntlr2_handoff_length;
+	int cntlr2_handoff_length;
 
 	/* PHY attributes */
 	phys_addr_t phy_handoff_base;
 	phys_addr_t phy_base;
 	size_t phy_total_length;
-	size_t phy_handoff_length;
+	int phy_handoff_length;
 
 	/* PHY engine attributes */
 	phys_addr_t phy_engine_handoff_base;
 	size_t phy_engine_total_length;
-	size_t phy_engine_handoff_length;
+	int phy_engine_handoff_length;
 
 	/* Calibration attributes */
 	phys_addr_t train_imem_base;
@@ -2279,7 +2279,7 @@ int sdram_mmr_init_full(struct udevice *dev)
 
 	/* Get bank configuration from devicetree */
 	ret = fdtdec_decode_ram_size(gd->fdt_blob, NULL, 0, NULL,
-				     (phys_size_t *)&gd->ram_size, &bd);
+				     (phys_size_t *)&gd->ram_size, gd);
 	if (ret) {
 		debug("%s: Failed to decode memory node\n",  __func__);
 		return -1;
@@ -2287,7 +2287,7 @@ int sdram_mmr_init_full(struct udevice *dev)
 
 	printf("DDR: %lld MiB\n", gd->ram_size >> 20);
 
-	priv->info.base = bd.bi_dram[0].start;
+	priv->info.base = gd->dram[0].start;
 	priv->info.size = gd->ram_size;
 
 	sdram_size_check(&bd);

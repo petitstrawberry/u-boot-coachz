@@ -11,9 +11,11 @@ images that it reads and boots. Documentation about FIT is available in
     :maxdepth: 1
 
     beaglebone_vboot
+    dm-verity
     howto
     kernel_fdt
     kernel_fdts_compressed
+    kernel_fdt_optee
     kernel
     multi
     multi_spl

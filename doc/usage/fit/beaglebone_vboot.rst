@@ -473,7 +473,7 @@ you sign::
 Here we are overriding the normal device tree file with our one, which
 contains the public key.
 
-Now you have a special U-Boot image with the public key. It can verify can
+Now you have a special U-Boot image with the public key. It can verify any
 kernel that you sign with the private key as in step 5.
 
 If you like you can take a look at the public key information that mkimage
@@ -518,13 +518,13 @@ Here the card is /dev/sde::
 
 Boot the board using the commands below::
 
-    setenv bootargs console=ttyO0,115200n8 quiet root=/dev/mmcblk0p2 ro rootfstype=ext4 rootwait
+    env set bootargs console=ttyO0,115200n8 quiet root=/dev/mmcblk0p2 ro rootfstype=ext4 rootwait
     ext2load mmc 0:2 82000000 /boot/image.fit
     bootm 82000000
 
 You should then see something like this::
 
-    U-Boot# setenv bootargs console=ttyO0,115200n8 quiet root=/dev/mmcblk0p2 ro rootfstype=ext4 rootwait
+    U-Boot# env set bootargs console=ttyO0,115200n8 quiet root=/dev/mmcblk0p2 ro rootfstype=ext4 rootwait
     U-Boot# ext2load mmc 0:2 82000000 /boot/image.fit
     7824930 bytes read in 589 ms (12.7 MiB/s)
     U-Boot# bootm 82000000

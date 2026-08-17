@@ -9,6 +9,8 @@
 #include <log.h>
 #include <video.h>
 #include <asm/global_data.h>
+#include <asm/system.h>
+#include <linux/sizes.h>
 
 static int simple_video_probe(struct udevice *dev)
 {
@@ -19,9 +21,15 @@ static int simple_video_probe(struct udevice *dev)
 	int ret;
 	fdt_addr_t base;
 	fdt_size_t size;
-	u32 width, height, rot;
+	u32 width, height, stride, rot;
+	struct ofnode_phandle_args args;
 
-	base = dev_read_addr_size(dev, &size);
+	ret = dev_read_phandle_with_args(dev, "memory-region", NULL, 0, 0, &args);
+	if (ret)
+		base = dev_read_addr_size(dev, &size);
+	else
+		base = ofnode_get_addr_size(args.node, "reg", &size);
+
 	if (base == FDT_ADDR_T_NONE) {
 		debug("%s: Failed to decode memory region\n", __func__);
 		return -EINVAL;
@@ -37,6 +45,13 @@ static int simple_video_probe(struct udevice *dev)
 	plat->base = base;
 	plat->size = size;
 
+#ifdef CONFIG_ARM64
+	/* The framebuffer buffer might not be mapped on some devices */
+	if (plat->base % SZ_4K)
+		log_warning("Framebuffer base %lx is not 4k aligned!\n", plat->base);
+	mmu_map_region((phys_addr_t)plat->base, (phys_addr_t)ALIGN(plat->size, SZ_4K), false);
+#endif
+
 	video_set_flush_dcache(dev, true);
 
 	debug("%s: Query resolution...\n", __func__);
@@ -51,6 +66,11 @@ static int simple_video_probe(struct udevice *dev)
 	uc_priv->rot = rot;
 	uc_priv->xsize = width;
 	uc_priv->ysize = height;
+
+	/* Optional - in most cases, auto-calculation works */
+	ret = ofnode_read_u32(node, "stride", &stride);
+	if (!ret || stride)
+		uc_priv->line_length = stride;
 
 	format = ofnode_read_string(node, "format");
 	debug("%s: %dx%d@%s\n", __func__, uc_priv->xsize, uc_priv->ysize, format);

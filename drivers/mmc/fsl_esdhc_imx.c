@@ -36,7 +36,6 @@
 #include <dm/pinctrl.h>
 #include <dt-structs.h>
 #include <mapmem.h>
-#include <dm/ofnode.h>
 #include <linux/iopoll.h>
 #include <linux/dma-mapping.h>
 
@@ -752,10 +751,11 @@ static int esdhc_set_voltage(struct mmc *mmc)
 	int ret;
 
 	priv->signal_voltage = mmc->signal_voltage;
+	if (priv->vs18_enable)
+		return -ENOTSUPP;
+
 	switch (mmc->signal_voltage) {
 	case MMC_SIGNAL_VOLTAGE_330:
-		if (priv->vs18_enable)
-			return -ENOTSUPP;
 		if (CONFIG_IS_ENABLED(DM_REGULATOR) &&
 		    !IS_ERR_OR_NULL(priv->vqmmc_dev)) {
 			ret = regulator_set_value(priv->vqmmc_dev,
@@ -1392,7 +1392,6 @@ static int fsl_esdhc_of_to_plat(struct udevice *dev)
 	struct udevice *vqmmc_dev;
 	int ret;
 
-	ofnode node = dev_ofnode(dev);
 	fdt_addr_t addr;
 	unsigned int val;
 
@@ -1406,15 +1405,15 @@ static int fsl_esdhc_of_to_plat(struct udevice *dev)
 	priv->dev = dev;
 	priv->mode = -1;
 
-	val = ofnode_read_u32_default(node, "fsl,tuning-step", 1);
+	val = dev_read_u32_default(dev, "fsl,tuning-step", 1);
 	priv->tuning_step = val;
-	val = ofnode_read_u32_default(node, "fsl,tuning-start-tap",
-				      ESDHC_TUNING_START_TAP_DEFAULT);
+	val = dev_read_u32_default(dev, "fsl,tuning-start-tap",
+				   ESDHC_TUNING_START_TAP_DEFAULT);
 	priv->tuning_start_tap = val;
-	val = ofnode_read_u32_default(node, "fsl,strobe-dll-delay-target",
-				      ESDHC_STROBE_DLL_CTRL_SLV_DLY_TARGET_DEFAULT);
+	val = dev_read_u32_default(dev, "fsl,strobe-dll-delay-target",
+				   ESDHC_STROBE_DLL_CTRL_SLV_DLY_TARGET_DEFAULT);
 	priv->strobe_dll_delay_target = val;
-	val = ofnode_read_u32_default(node, "fsl,signal-voltage-switch-extra-delay-ms", 0);
+	val = dev_read_u32_default(dev, "fsl,signal-voltage-switch-extra-delay-ms", 0);
 	priv->signal_voltage_switch_extra_delay_ms = val;
 
 	if (dev_read_bool(dev, "broken-cd"))
@@ -1543,7 +1542,7 @@ static int fsl_esdhc_probe(struct udevice *dev)
 	init_clk_usdhc(dev_seq(dev));
 
 	priv->sdhc_clk = mxc_get_clock(MXC_ESDHC_CLK + dev_seq(dev));
-	if (priv->sdhc_clk <= 0) {
+	if (!priv->sdhc_clk || IS_ERR_VALUE(priv->sdhc_clk)) {
 		dev_err(dev, "Unable to get clk for %s\n", dev->name);
 		return -EINVAL;
 	}
@@ -1685,7 +1684,7 @@ static int fsl_esdhc_bind(struct udevice *dev)
 	return mmc_bind(dev, &plat->mmc, &plat->cfg);
 }
 
-U_BOOT_DRIVER(fsl_esdhc) = {
+U_BOOT_DRIVER(fsl_esdhc_imx) = {
 	.name	= "fsl_esdhc",
 	.id	= UCLASS_MMC,
 	.of_match = fsl_esdhc_ids,

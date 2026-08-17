@@ -6,15 +6,22 @@
 #include <display_options.h>
 #include <dm/device.h>
 #include <efi_loader.h>
+#include <env.h>
 #include <image.h>
 #include <linux/delay.h>
+#include <linux/kconfig.h>
 #include <lwip/apps/tftp_client.h>
+#include <lwip/apps/tftp_server.h>
 #include <lwip/timeouts.h>
 #include <mapmem.h>
 #include <net.h>
 #include <time.h>
 
 #define PROGRESS_PRINT_STEP_BYTES (10 * 1024)
+/* Max time to wait for first data packet from server */
+#define NO_RSP_TIMEOUT_MS 10000
+/* Max time to wait for an incoming TFTP write request */
+#define TFTPSRV_LISTEN_TIMEOUT_MS 50000
 
 enum done_state {
 	NOT_DONE = 0,
@@ -27,25 +34,130 @@ struct tftp_ctx {
 	ulong daddr;
 	ulong size;
 	ulong block_count;
+	ulong hash_count;
 	ulong start_time;
 	enum done_state done;
+	bool is_server;
+	bool wrq_accepted;
+	char fname[TFTP_MAX_FILENAME_LEN + 1];
 };
+
+/*
+ * The lwIP TFTP server open callback has no user-data argument. Keep the
+ * current server context here so tftp_open() can return it.
+ */
+static struct tftp_ctx *tftpsrv_active_ctx;
+
+static void transfer_timeout(void *arg)
+{
+	struct tftp_ctx *ctx = (struct tftp_ctx *)arg;
+
+	printf("Timeout!\n");
+	ctx->done = FAILURE;
+}
+
+static void restart_transfer_timeout(struct tftp_ctx *ctx)
+{
+	sys_untimeout(transfer_timeout, ctx);
+	sys_timeout(TFTP_TIMEOUT_MSECS, transfer_timeout, ctx);
+}
+
+/**
+ * store_block() - copy received data
+ *
+ * This function is called by the receive callback to copy a block of data
+ * into its final location (ctx->daddr). Before doing so, it checks if the copy
+ * is allowed.
+ *
+ * @ctx: the context for the current transfer
+ * @src: the data received from the TCP stack
+ * @len: the length of the data
+ */
+static int store_block(struct tftp_ctx *ctx, void *src, u16_t len)
+{
+	ulong store_addr = ctx->daddr;
+	ulong tftp_tsize;
+	ulong pos;
+	void *ptr;
+
+	if (CONFIG_IS_ENABLED(LMB)) {
+		if (store_addr + len < store_addr ||
+		    lmb_read_check(store_addr, len)) {
+			puts("\nTFTP error: ");
+			puts("trying to overwrite reserved memory...\n");
+			return -1;
+		}
+	}
+
+	ptr = map_sysmem(store_addr, len);
+	memcpy(ptr, src, len);
+	unmap_sysmem(ptr);
+
+	ctx->daddr += len;
+	ctx->size += len;
+	ctx->block_count++;
+
+	tftp_tsize = ctx->is_server ? 0 : tftp_client_get_tsize();
+	if (tftp_tsize) {
+		pos = clamp(ctx->size, 0UL, tftp_tsize);
+
+		while (ctx->hash_count < pos * 50 / tftp_tsize) {
+			putc('#');
+			ctx->hash_count++;
+		}
+	} else {
+		if (ctx->block_count % 10 == 0) {
+			putc('#');
+			if (ctx->block_count % (65 * 10) == 0)
+				puts("\n\t ");
+		}
+	}
+
+	return 0;
+}
 
 static void *tftp_open(const char *fname, const char *mode, u8_t is_write)
 {
-	return NULL;
+	struct tftp_ctx *ctx = tftpsrv_active_ctx;
+
+	if (!IS_ENABLED(CONFIG_CMD_TFTPSRV) || !ctx || !is_write)
+		return NULL;
+
+	ctx->wrq_accepted = true;
+	ctx->start_time = get_timer(0);
+	snprintf(ctx->fname, sizeof(ctx->fname), "%s", fname);
+	restart_transfer_timeout(ctx);
+
+	printf("\nReceiving '%s' mode '%s'\n", fname, mode);
+	puts("Loading: ");
+
+	return ctx;
 }
 
 static void tftp_close(void *handle)
 {
 	struct tftp_ctx *ctx = handle;
+	ulong tftp_tsize;
 	ulong elapsed;
+
+	sys_untimeout(transfer_timeout, ctx);
 
 	if (ctx->done == FAILURE || ctx->done == ABORTED) {
 		/* Closing after an error or Ctrl-C */
 		return;
 	}
 	ctx->done = SUCCESS;
+
+	tftp_tsize = ctx->is_server ? 0 : tftp_client_get_tsize();
+	if (tftp_tsize) {
+		/* Print hash marks for the last packet received */
+		while (ctx->hash_count < 49) {
+			putc('#');
+			ctx->hash_count++;
+		}
+		puts("  ");
+		print_size(tftp_tsize, "");
+	}
 
 	elapsed = get_timer(ctx->start_time);
 	if (elapsed > 0) {
@@ -72,16 +184,13 @@ static int tftp_write(void *handle, struct pbuf *p)
 	struct pbuf *q;
 
 	for (q = p; q; q = q->next) {
-		memcpy((void *)ctx->daddr, q->payload, q->len);
-		ctx->daddr += q->len;
-		ctx->size += q->len;
-		ctx->block_count++;
-		if (ctx->block_count % 10 == 0) {
-			putc('#');
-			if (ctx->block_count % (65 * 10) == 0)
-				puts("\n\t ");
+		if (store_block(ctx, q->payload, q->len) < 0) {
+			ctx->done = FAILURE;
+			return -1;
 		}
 	}
+
+	restart_transfer_timeout(ctx);
 
 	return 0;
 }
@@ -106,11 +215,24 @@ static const struct tftp_context tftp_context = {
 	tftp_error
 };
 
+static void no_response(void *arg)
+{
+	struct tftp_ctx *ctx = (struct tftp_ctx *)arg;
+
+	if (ctx->size)
+		return;
+
+	printf("Timeout!\n");
+	ctx->done = FAILURE;
+}
+
 static int tftp_loop(struct udevice *udev, ulong addr, char *fname,
 		     ip_addr_t srvip, uint16_t srvport)
 {
+	int blksize = CONFIG_TFTP_BLOCKSIZE;
 	struct netif *netif;
 	struct tftp_ctx ctx;
+	const char *ep;
 	err_t err;
 
 	if (!fname || addr == 0)
@@ -126,11 +248,15 @@ static int tftp_loop(struct udevice *udev, ulong addr, char *fname,
 	ctx.done = NOT_DONE;
 	ctx.size = 0;
 	ctx.block_count = 0;
+	ctx.hash_count = 0;
 	ctx.daddr = addr;
+	ctx.is_server = false;
+	ctx.wrq_accepted = false;
+	ctx.fname[0] = '\0';
 
 	printf("Using %s device\n", udev->name);
 	printf("TFTP from server %s; our IP address is %s\n",
-	       ip4addr_ntoa(&srvip), env_get("ipaddr"));
+	       ipaddr_ntoa(&srvip), env_get("ipaddr"));
 	printf("Filename '%s'.\n", fname);
 	printf("Load address: 0x%lx\n", ctx.daddr);
 	printf("Loading: ");
@@ -139,7 +265,10 @@ static int tftp_loop(struct udevice *udev, ulong addr, char *fname,
 	if (!(err == ERR_OK || err == ERR_USE))
 		log_err("tftp_init_client err: %d\n", err);
 
-	tftp_client_set_blksize(CONFIG_TFTP_BLOCKSIZE);
+	ep = env_get("tftpblocksize");
+	if (ep)
+		blksize = simple_strtol(ep, NULL, 10);
+	tftp_client_set_blksize(blksize);
 
 	ctx.start_time = get_timer(0);
 	err = tftp_get(&ctx, &srvip, srvport, fname, TFTP_MODE_OCTET);
@@ -150,15 +279,16 @@ static int tftp_loop(struct udevice *udev, ulong addr, char *fname,
 		return -1;
 	}
 
+	sys_timeout(NO_RSP_TIMEOUT_MS, no_response, &ctx);
 	while (!ctx.done) {
 		net_lwip_rx(udev, netif);
-		sys_check_timeouts();
 		if (ctrlc()) {
 			printf("\nAbort\n");
 			ctx.done = ABORTED;
 			break;
 		}
 	}
+	sys_untimeout(no_response, (void *)&ctx);
 
 	tftp_cleanup();
 
@@ -177,9 +307,139 @@ static int tftp_loop(struct udevice *udev, ulong addr, char *fname,
 	return -1;
 }
 
+static void no_request(void *arg)
+{
+	struct tftp_ctx *ctx = (struct tftp_ctx *)arg;
+
+	if (ctx->wrq_accepted)
+		return;
+
+	printf("Timeout!\n");
+	ctx->done = FAILURE;
+}
+
+static int tftpsrv_loop(struct udevice *udev, ulong addr)
+{
+	struct netif *netif;
+	struct tftp_ctx ctx;
+	const char *ipaddr;
+	int ret = -1;
+	err_t err;
+
+	if (addr == 0)
+		return -1;
+
+	ipaddr = env_get("ipaddr");
+	if (!ipaddr || !*ipaddr) {
+		log_err("error: ipaddr has to be set\n");
+		return -1;
+	}
+
+	netif = net_lwip_new_netif(udev);
+	if (!netif)
+		return -1;
+
+	memset(&ctx, 0, sizeof(ctx));
+	ctx.done = NOT_DONE;
+	ctx.daddr = addr;
+	ctx.is_server = true;
+
+	printf("Using %s device\n", udev->name);
+	printf("Listening for TFTP transfer on %s\n", ipaddr);
+	printf("Load address: 0x%lx\n", ctx.daddr);
+
+	tftpsrv_active_ctx = &ctx;
+	err = tftp_init_server(&tftp_context);
+	if (err != ERR_OK) {
+		log_err("tftp_init_server err: %d\n", err);
+		goto out_remove_netif;
+	}
+
+	ctx.start_time = get_timer(0);
+	sys_timeout(TFTPSRV_LISTEN_TIMEOUT_MS, no_request, &ctx);
+	while (!ctx.done) {
+		net_lwip_rx(udev, netif);
+		if (ctrlc()) {
+			printf("\nAbort\n");
+			ctx.done = ABORTED;
+			break;
+		}
+	}
+	sys_untimeout(no_request, &ctx);
+	sys_untimeout(transfer_timeout, &ctx);
+
+	tftp_cleanup();
+
+	if (ctx.done == SUCCESS) {
+		if (env_set_hex("fileaddr", addr)) {
+			log_err("fileaddr not updated\n");
+			goto out_remove_netif;
+		}
+		efi_set_bootdev("Net", "", ctx.fname, map_sysmem(addr, 0),
+				ctx.size);
+		ret = 0;
+	}
+
+out_remove_netif:
+	tftpsrv_active_ctx = NULL;
+	net_lwip_remove_netif(netif);
+
+	return ret;
+}
+
+int do_tftpsrv(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
+{
+	int ret = CMD_RET_SUCCESS;
+	char *end;
+	ulong laddr;
+	ulong addr;
+
+	if (!IS_ENABLED(CONFIG_CMD_TFTPSRV))
+		return CMD_RET_FAILURE;
+
+	laddr = env_get_ulong("loadaddr", 16, image_load_addr);
+
+	switch (argc) {
+	case 1:
+		break;
+	case 2:
+		addr = hextoul(argv[1], &end);
+		if (end == argv[1] || *end) {
+			ret = CMD_RET_USAGE;
+			goto out;
+		}
+		laddr = addr;
+		break;
+	default:
+		ret = CMD_RET_USAGE;
+		goto out;
+	}
+
+	if (!laddr) {
+		log_err("error: no load address\n");
+		ret = CMD_RET_FAILURE;
+		goto out;
+	}
+
+	if (net_lwip_eth_start() < 0) {
+		ret = CMD_RET_FAILURE;
+		goto out;
+	}
+
+	if (tftpsrv_loop(eth_get_dev(), laddr) < 0)
+		ret = CMD_RET_FAILURE;
+	else
+		image_load_addr = laddr;
+	net_lwip_eth_stop();
+
+out:
+	return ret;
+}
+
 int do_tftpb(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 {
 	int ret = CMD_RET_SUCCESS;
+	bool started = false;
 	char *arg = NULL;
 	char *words[3] = { };
 	char *fname = NULL;
@@ -225,7 +485,7 @@ int do_tftpb(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 	if (!arg)
 		arg = net_boot_file_name;
 
-	if (arg) {
+	if (*arg) {
 		/* Parse [ip:[port:]]fname */
 		i = 0;
 		while ((*(words + i) = strsep(&arg, ":")))
@@ -284,10 +544,16 @@ int do_tftpb(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 		ret = CMD_RET_FAILURE;
 		goto out;
 	}
+	started = true;
 
 	if (tftp_loop(eth_get_dev(), laddr, fname, srvip, port) < 0)
 		ret = CMD_RET_FAILURE;
+	else
+		image_load_addr = laddr;
 out:
-	free(arg);
+	if (started)
+		net_lwip_eth_stop();
+	if (arg != net_boot_file_name)
+		free(arg);
 	return ret;
 }

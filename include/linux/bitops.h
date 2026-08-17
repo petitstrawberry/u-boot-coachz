@@ -15,6 +15,7 @@
 #define BIT_ULL_MASK(nr)	(1ULL << ((nr) % BITS_PER_LONG_LONG))
 #define BIT_ULL_WORD(nr)	((nr) / BITS_PER_LONG_LONG)
 #define BITS_PER_BYTE		8
+#define BITS_PER_TYPE(type)	(sizeof(type) * BITS_PER_BYTE)
 #define BITS_TO_LONGS(nr)	DIV_ROUND_UP(nr, BITS_PER_BYTE * sizeof(long))
 #endif
 
@@ -146,6 +147,17 @@ static inline unsigned long generic_hweight64(__u64 w)
 static inline unsigned long hweight_long(unsigned long w)
 {
 	return sizeof(w) == 4 ? generic_hweight32(w) : generic_hweight64(w);
+}
+
+/**
+ * rol32 - rotate a 32-bit value left
+ * @word: value to rotate
+ * @shift: bits to roll
+ */
+
+static inline __u32 rol32(__u32 word, unsigned int shift)
+{
+	return (word << (shift & 31)) | (word >> ((-shift) & 31));
 }
 
 #include <asm/bitops.h>

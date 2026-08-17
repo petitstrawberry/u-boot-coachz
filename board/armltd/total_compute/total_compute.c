@@ -31,6 +31,7 @@ static struct mm_region total_compute_mem_map[TC_MEM_MAP_MAX] = {
 
 struct mm_region *mem_map = total_compute_mem_map;
 
+#ifdef CONFIG_OF_HAS_PRIOR_STAGE
 /*
  * Push the variable into the .data section so that it
  * does not get cleared later.
@@ -45,14 +46,16 @@ int board_fdt_blob_setup(void **fdtp)
 	*fdtp = (void *)fw_dtb_pointer;
 	return 0;
 }
+#endif
 
 int misc_init_r(void)
 {
 	size_t base;
 
+#ifdef CONFIG_OF_HAS_PRIOR_STAGE
 	if (!env_get("fdt_addr_r"))
 		env_set_hex("fdt_addr_r", fw_dtb_pointer);
-
+#endif
 	if (!env_get("kernel_addr_r")) {
 		/*
 		 * The kernel has to be 2M aligned and the first 64K at the
@@ -64,11 +67,6 @@ int misc_init_r(void)
 		env_set_hex("kernel_addr_r", base);
 	}
 
-	return 0;
-}
-
-int board_init(void)
-{
 	return 0;
 }
 
@@ -91,9 +89,9 @@ void build_mem_map(void)
 		 * The first node is for I/O device, start from node 1 for
 		 * updating DRAM info.
 		 */
-		mem_map[i + 1].virt = gd->bd->bi_dram[i].start;
-		mem_map[i + 1].phys = gd->bd->bi_dram[i].start;
-		mem_map[i + 1].size = gd->bd->bi_dram[i].size;
+		mem_map[i + 1].virt = gd->dram[i].start;
+		mem_map[i + 1].phys = gd->dram[i].start;
+		mem_map[i + 1].size = gd->dram[i].size;
 		mem_map[i + 1].attrs = PTE_BLOCK_MEMTYPE(MT_NORMAL) |
 				       PTE_BLOCK_INNER_SHARE;
 	}

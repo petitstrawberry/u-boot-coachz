@@ -197,7 +197,7 @@ config PINCTRL_AR933X
 
 config PINCTRL_AT91
 	bool "AT91 pinctrl driver"
-	depends on DM
+	depends on DM && ARCH_AT91
 	help
 	  This option is to enable the AT91 pinctrl driver for AT91 PIO
 	  controller.
@@ -213,13 +213,14 @@ config PINCTRL_AT91
 
 config PINCTRL_AT91PIO4
 	bool "AT91 PIO4 pinctrl driver"
-	depends on DM
+	depends on DM && ARCH_AT91
 	help
 	  This option is to enable the AT91 pinctrl driver for AT91 PIO4
 	  controller which is available on SAMA5D2 SoC.
 
 config PINCTRL_INTEL
 	bool "Standard Intel pin-control and pin-mux driver"
+	depends on X86
 	help
 	  Recent Intel chips such as Apollo Lake (APL) use a common pin control
 	  and GPIO scheme. The settings for this come from an SoC-specific
@@ -248,7 +249,7 @@ config PINCTRL_QCA953X
 
 config PINCTRL_QE
 	bool "QE based pinctrl driver, like on mpc83xx"
-	depends on DM
+	depends on DM && MPC83xx
 	help
 	  This option is to enable the QE pinctrl driver for QE based io
 	  controller.
@@ -263,6 +264,24 @@ config PINCTRL_ROCKCHIP_RV1108
 	  both the GPIO definitions and pin control functions for each
 	  available multiplex function.
 
+config PINCTRL_SX150X
+	bool "Semtech SX150x I2C GPIO expander pinctrl driver"
+	depends on DM && PINCTRL_FULL
+	help
+	  Say yes here to provide support for Semtech SX150x-series I2C
+	  GPIO expanders as pinctrl module.
+	  Compatible models include:
+	  - 8 bits:  sx1508q, sx1502q
+	  - 16 bits: sx1509q, sx1506q
+
+config SPL_PINCTRL_SX150X
+	bool "Semtech SX150x I2C GPIO expander pinctrl driver in SPL"
+	depends on DM && SPL_PINCTRL_FULL
+	help
+	  This option is an SPL-variant of the PINCTRL_SX150X option.
+	  See the help of PINCTRL_SX150X for details.
+
+
 config PINCTRL_SANDBOX
 	bool "Sandbox pinctrl driver"
 	depends on SANDBOX
@@ -272,9 +291,19 @@ config PINCTRL_SANDBOX
 	  Currently, this driver actually does nothing but print debug
 	  messages when pinctrl operations are invoked.
 
+config PINCTRL_SCMI
+	bool "Support SCMI pin controllers"
+	depends on PINCTRL_FULL && SCMI_FIRMWARE
+	help
+	  This is for pinctrl over the SCMI protocol.  This allows the
+	  initial pin configuration to be set up from the device tree.  The
+	  gpio_scmi driver is built on top of this driver if GPIO is
+	  required.
+
 config PINCTRL_SINGLE
 	bool "Single register pin-control and pin-multiplex driver"
 	depends on DM
+	select DEVRES
 	help
 	  This enables pinctrl driver for systems using a single register for
 	  pin configuration and multiplexing. TI's AM335X SoCs are examples of
@@ -323,6 +352,14 @@ config SPL_PINCTRL_STMFX
 	  This option is an SPL-variant of the SPL_PINCTRL_STMFX option.
 	  See the help of PINCTRL_STMFX for details.
 
+config PINCTRL_TH1520
+	bool "T-Head TH1520 pinctrl driver"
+	depends on DM && PINCTRL_GENERIC
+	select PINCONF
+	help
+	  Support pin multiplexing and configuration control blocks on the
+	  T-Head TH1520 SoC.
+
 config ASPEED_AST2500_PINCTRL
 	bool "Aspeed AST2500 pin control driver"
 	depends on DM && PINCTRL_GENERIC && ASPEED_AST2500
@@ -338,6 +375,26 @@ config ASPEED_AST2600_PINCTRL
 	default y
 	help
 	  Support pin multiplexing control on Aspeed ast2600 SoC. The driver
+	  uses Generic Pinctrl framework and is compatible with the Linux
+	  driver, i.e. it uses the same device tree configuration.
+
+config ASPEED_AST2700_SOC0_PINCTRL
+	bool "Aspeed AST2700 SoC0 pin control driver"
+	depends on DM && PINCTRL_GENERIC && ASPEED_AST2700
+	select PINCONF
+	default y
+	help
+	  Support pin multiplexing control on Aspeed ast2700 SoC0. The driver
+	  uses Generic Pinctrl framework and is compatible with the Linux
+	  driver, i.e. it uses the same device tree configuration.
+
+config ASPEED_AST2700_SOC1_PINCTRL
+	bool "Aspeed AST2700 SoC1 pin control driver"
+	depends on DM && PINCTRL_GENERIC && ASPEED_AST2700
+	select PINCONF
+	default y
+	help
+	  Support pin multiplexing control on Aspeed ast2700 SoC1. The driver
 	  uses Generic Pinctrl framework and is compatible with the Linux
 	  driver, i.e. it uses the same device tree configuration.
 
@@ -358,8 +415,17 @@ config PINCTRL_ZYNQMP
 	  Generic Pinctrl framework and is compatible with the Linux driver,
 	  i.e. it uses the same device tree configuration.
 
+config SPL_PINCTRL_ZYNQMP
+	bool "Xilinx ZynqMP pin control driver in SPL"
+	depends on SPL_DM && SPL_PINCTRL_GENERIC && ARCH_ZYNQMP
+	default PINCTRL_ZYNQMP
+	help
+	  Support pin multiplexing control in SPL on Xilinx ZynqMP. Only "pins"
+	  can be muxed; "groups" are not supported.
+
 endif
 
+source "drivers/pinctrl/airoha/Kconfig"
 source "drivers/pinctrl/broadcom/Kconfig"
 source "drivers/pinctrl/exynos/Kconfig"
 source "drivers/pinctrl/intel/Kconfig"
@@ -374,6 +440,7 @@ source "drivers/pinctrl/nxp/Kconfig"
 source "drivers/pinctrl/qcom/Kconfig"
 source "drivers/pinctrl/renesas/Kconfig"
 source "drivers/pinctrl/rockchip/Kconfig"
+source "drivers/pinctrl/spacemit/Kconfig"
 source "drivers/pinctrl/sunxi/Kconfig"
 source "drivers/pinctrl/tegra/Kconfig"
 source "drivers/pinctrl/uniphier/Kconfig"

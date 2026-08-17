@@ -27,7 +27,7 @@
 
 DECLARE_GLOBAL_DATA_PTR;
 
-int mtk_pll_early_init(void)
+static int mtk_pll_early_init(void)
 {
 	unsigned long pll_rates[] = {
 		[CLK_APMIXED_ARMPLL] = 1250000000,
@@ -41,7 +41,7 @@ int mtk_pll_early_init(void)
 	int ret, i;
 
 	ret = uclass_get_device_by_driver(UCLASS_CLK,
-			DM_DRIVER_GET(mtk_clk_apmixedsys), &dev);
+			DM_DRIVER_GET(mt7629_clk_apmixedsys), &dev);
 	if (ret)
 		return ret;
 
@@ -60,7 +60,7 @@ int mtk_pll_early_init(void)
 
 	/* setup mcu bus */
 	ret = uclass_get_device_by_driver(UCLASS_SYSCON,
-			DM_DRIVER_GET(mtk_mcucfg), &dev);
+			DM_DRIVER_GET(mt7629_mcucfg), &dev);
 	if (ret)
 		return ret;
 

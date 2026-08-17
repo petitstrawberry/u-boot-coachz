@@ -24,7 +24,6 @@
 #include <ubifs_uboot.h>
 #include <btrfs.h>
 #include <asm/cache.h>
-#include <asm/global_data.h>
 #include <asm/io.h>
 #include <div64.h>
 #include <linux/math64.h>
@@ -33,8 +32,6 @@
 #include <squashfs.h>
 #include <erofs.h>
 #include <exfat.h>
-
-DECLARE_GLOBAL_DATA_PTR;
 
 static struct blk_desc *fs_dev_desc;
 static int fs_dev_part;
@@ -316,27 +313,27 @@ static struct fstype_info fstypes[] = {
 	},
 #endif
 #endif
-#ifndef CONFIG_XPL_BUILD
-#ifdef CONFIG_FS_BTRFS
+#if CONFIG_IS_ENABLED(FS_BTRFS)
 	{
 		.fstype = FS_TYPE_BTRFS,
 		.name = "btrfs",
 		.null_dev_desc_ok = false,
 		.probe = btrfs_probe,
 		.close = btrfs_close,
-		.ls = btrfs_ls,
+		.ls = fs_ls_generic,
 		.exists = btrfs_exists,
 		.size = btrfs_size,
 		.read = btrfs_read,
 		.write = fs_write_unsupported,
 		.uuid = btrfs_uuid,
-		.opendir = fs_opendir_unsupported,
+		.opendir = btrfs_opendir,
+		.readdir = btrfs_readdir,
+		.closedir = btrfs_closedir,
 		.unlink = fs_unlink_unsupported,
 		.mkdir = fs_mkdir_unsupported,
 		.ln = fs_ln_unsupported,
 		.rename = fs_rename_unsupported,
 	},
-#endif
 #endif
 #if CONFIG_IS_ENABLED(FS_SQUASHFS)
 	{
@@ -360,7 +357,7 @@ static struct fstype_info fstypes[] = {
 		.rename = fs_rename_unsupported,
 	},
 #endif
-#if IS_ENABLED(CONFIG_FS_EROFS)
+#if CONFIG_IS_ENABLED(FS_EROFS)
 	{
 		.fstype = FS_TYPE_EROFS,
 		.name = "erofs",
@@ -382,7 +379,7 @@ static struct fstype_info fstypes[] = {
 		.rename = fs_rename_unsupported,
 	},
 #endif
-#if IS_ENABLED(CONFIG_FS_EXFAT)
+#if CONFIG_IS_ENABLED(FS_EXFAT)
 	{
 		.fstype = FS_TYPE_EXFAT,
 		.name = "exfat",
@@ -464,10 +461,52 @@ const char *fs_get_type_name(void)
 	return fs_get_info(fs_type)->name;
 }
 
+/*
+ * Some fstypes (semihosting, ubifs) have no underlying block device
+ * and ignore the block_desc argument of their probe hook. The legacy
+ * commands (ubifsload, semihosting via env macros) just pass NULL;
+ * for "load <iface> ..." to behave the same, the dispatcher opts
+ * those fstypes in by name here, before any block-device lookup is
+ * attempted.
+ *
+ * Returns the matching fstype_info if @ifname names a fstype that
+ * opts into null_dev_desc_ok dispatch and the caller's @fstype filter
+ * permits it. Returns NULL otherwise.
+ */
+static struct fstype_info *fs_lookup_null_dev_info(const char *ifname,
+						   int fstype)
+{
+	struct fstype_info *info;
+	int i;
+
+	for (i = 0, info = fstypes; i < ARRAY_SIZE(fstypes); i++, info++) {
+		if (fstype != FS_TYPE_ANY && info->fstype != FS_TYPE_ANY &&
+		    fstype != info->fstype)
+			continue;
+		if (!info->null_dev_desc_ok || !info->name)
+			continue;
+		if (!strcmp(info->name, ifname))
+			return info;
+	}
+
+	return NULL;
+}
+
 int fs_set_blk_dev(const char *ifname, const char *dev_part_str, int fstype)
 {
 	struct fstype_info *info;
 	int part, i;
+
+	info = fs_lookup_null_dev_info(ifname, fstype);
+	if (info) {
+		fs_dev_desc = NULL;
+		memset(&fs_partition, 0, sizeof(fs_partition));
+		if (!info->probe(NULL, &fs_partition)) {
+			fs_type = info->fstype;
+			fs_dev_part = 0;
+			return 0;
+		}
+	}
 
 	part = part_get_info_by_dev_and_name_or_num(ifname, dev_part_str, &fs_dev_desc,
 						    &fs_partition, 1);
@@ -580,6 +619,7 @@ static int fs_read_lmb_check(const char *filename, ulong addr, loff_t offset,
 	int ret;
 	loff_t size;
 	loff_t read_len;
+	phys_addr_t read_addr;
 
 	/* get the actual size of the file */
 	ret = info->size(filename, &size);
@@ -597,7 +637,9 @@ static int fs_read_lmb_check(const char *filename, ulong addr, loff_t offset,
 
 	lmb_dump_all();
 
-	if (!lmb_alloc_addr(addr, read_len, LMB_NONE))
+	read_addr = (phys_addr_t)addr;
+	if (!lmb_alloc_mem(LMB_MEM_ALLOC_ADDR, 0, &read_addr, read_len,
+			   LMB_NONE))
 		return 0;
 
 	log_err("** Reading file would overwrite reserved memory **\n");
@@ -1058,15 +1100,25 @@ int do_mv(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[],
 	 */
 	if (dirs) {
 		char *src_name = strrchr(src, '/');
-		int dst_len;
 
 		if (src_name)
 			src_name += 1;
 		else
 			src_name = src;
 
-		dst_len = strlen(dst);
-		new_dst = calloc(1, dst_len + strlen(src_name) + 2);
+		size_t dst_len = strlen(dst);
+		size_t src_len = strlen(src_name);
+		size_t total;
+
+		if (__builtin_add_overflow(dst_len, src_len, &total) ||
+		    __builtin_add_overflow(total, 2, &total)) {
+			return 0;
+		}
+
+		new_dst = calloc(1, total);
+		if (!new_dst)
+			return 0;
+
 		strcpy(new_dst, dst);
 
 		/* If there is already a trailing slash, don't add another */

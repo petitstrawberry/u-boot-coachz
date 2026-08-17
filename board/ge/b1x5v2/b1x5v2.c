@@ -17,6 +17,7 @@
 #include <asm/io.h>
 #include <asm/mach-imx/video.h>
 #include <command.h>
+#include <env.h>
 #include <i2c.h>
 #include <input.h>
 #include <ipu_pixfmt.h>
@@ -319,7 +320,7 @@ int overwrite_console(void)
 
 int board_early_init_f(void)
 {
-	select_ldb_di_clock_source(MXC_PLL5_CLK);
+	select_ldb_di_clock_source(MXC_PLL5_CLK, MXC_PLL5_CLK);
 
 	return 0;
 }

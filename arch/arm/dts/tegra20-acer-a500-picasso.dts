@@ -40,6 +40,10 @@
 		};
 	};
 
+	bsev@6001b000 {
+		status = "okay";
+	};
+
 	pinmux@70000014 {
 		pinctrl-names = "default";
 		pinctrl-0 = <&state_default>;
@@ -396,7 +400,7 @@
 		nvidia,xcvr-lsrslew = <2>;
 	};
 
-	sdmmc3: sdhci@c8000400 {
+	sdmmc3: mmc@c8000400 {
 		status = "okay";
 		bus-width = <4>;
 
@@ -408,7 +412,7 @@
 		vqmmc-supply = <&vdd_3v3_sys>;
 	};
 
-	sdmmc4: sdhci@c8000600 {
+	sdmmc4: mmc@c8000600 {
 		status = "okay";
 		bus-width = <8>;
 		non-removable;

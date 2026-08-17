@@ -5,7 +5,7 @@ config ADC
 	  This enables ADC API for drivers, which allows driving ADC features
 	  by single and multi-channel methods for:
 	  - start/stop/get data for conversion of a single-channel selected by
-	    a number or multi-channels selected by a bitmask
+	  a number or multi-channels selected by a bitmask
 	  - get data mask (ADC resolution)
 	  ADC reference Voltage supply options:
 	  - methods for get Vdd/Vss reference Voltage values with polarity
@@ -18,7 +18,7 @@ config SPL_ADC
 
 config ADC_EXYNOS
 	bool "Enable Exynos 54xx ADC driver"
-	depends on ADC
+	depends on ADC && ARCH_EXYNOS5
 	help
 	  This enables basic driver for Exynos ADC compatible with Exynos54xx.
 	  It provides:
@@ -49,7 +49,7 @@ config SARADC_MESON
 
 config SARADC_ROCKCHIP
 	bool "Enable Rockchip SARADC driver"
-	depends on ADC
+	depends on ADC && ARCH_ROCKCHIP
 	help
 	  This enables driver for Rockchip SARADC.
 	  It provides:

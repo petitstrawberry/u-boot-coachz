@@ -21,6 +21,7 @@ ifeq ($(CONFIG_GENERATE_ACPI_TABLE),)
 apps-y += dtbdump
 endif
 apps-$(CONFIG_BOOTEFI_TESTAPP_COMPILE) += testapp
+apps-y += dbginfodump
 
 obj-$(CONFIG_CMD_BOOTEFI_HELLO) += helloworld_efi.o
 obj-$(CONFIG_EFI_BOOTMGR) += efi_bootmgr.o
@@ -37,7 +38,7 @@ obj-$(CONFIG_EFI_DEVICE_PATH_UTIL) += efi_device_path_utilities.o
 obj-y += efi_dt_fixup.o
 obj-y += efi_fdt.o
 obj-y += efi_file.o
-obj-$(CONFIG_EFI_LOADER_HII) += efi_hii.o
+obj-$(CONFIG_EFI_LOADER_HII) += efi_hii.o efi_hii_config.o
 obj-y += efi_image_loader.o
 obj-y += efi_load_options.o
 obj-y += efi_memory.o
@@ -52,7 +53,8 @@ ifeq ($(CONFIG_EFI_MM_COMM_TEE),y)
 obj-y += efi_variable_tee.o
 else
 obj-y += efi_variable.o
-obj-y += efi_var_file.o
+obj-$(CONFIG_EFI_VARIABLE_FILE_STORE) += efi_var_file.o
+obj-$(CONFIG_EFI_VARIABLE_SF_STORE) += efi_var_sf.o
 obj-$(CONFIG_EFI_VARIABLES_PRESEED) += efi_var_seed.o
 endif
 obj-y += efi_watchdog.o
@@ -70,9 +72,13 @@ obj-$(CONFIG_EFI_RISCV_BOOT_PROTOCOL) += efi_riscv.o
 obj-$(CONFIG_EFI_LOAD_FILE2_INITRD) += efi_load_initrd.o
 obj-$(CONFIG_EFI_SIGNATURE_SUPPORT) += efi_signature.o
 obj-$(CONFIG_EFI_ECPT) += efi_conformance.o
+obj-$(CONFIG_EFI_DEBUG_SUPPORT) += efi_debug_support.o
 
-EFI_VAR_SEED_FILE := $(subst $\",,$(CONFIG_EFI_VAR_SEED_FILE))
-$(obj)/efi_var_seed.o: $(srctree)/$(EFI_VAR_SEED_FILE)
+TMP_VAR_SEED := $(subst $\",,$(CONFIG_EFI_VAR_SEED_FILE))
+EFI_VAR_SEED_FILE := $(if $(filter /% ,$(TMP_VAR_SEED)) \
+  ,$(TMP_VAR_SEED),$(srctree)/$(TMP_VAR_SEED))
+AFLAGS_efi_var_seed.o := -DEFI_VAR_SEED_FILE=\"$(EFI_VAR_SEED_FILE)\"
+$(obj)/efi_var_seed.o: $(EFI_VAR_SEED_FILE)
 
 ifeq ($(CONFIG_EFI_CAPSULE_AUTHENTICATE),y)
 capsule_crt_path=($(subst $(quote),,$(CONFIG_EFI_CAPSULE_CRT_FILE)))
@@ -96,5 +102,5 @@ $(foreach f,$(apps-y),\
 	$(eval CFLAGS_$(f).o := $(CFLAGS_EFI) -Os -ffreestanding)\
 	$(eval CFLAGS_REMOVE_$(f).o := $(CFLAGS_NON_EFI)))
 
-always += $(foreach f,$(apps-y),$(f).efi)
+always-y += $(foreach f,$(apps-y),$(f).efi)
 targets += $(foreach f,$(apps-y),$(f).o)

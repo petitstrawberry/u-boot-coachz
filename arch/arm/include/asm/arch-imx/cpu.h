@@ -48,6 +48,8 @@
 #define MXC_CPU_IMX8MPL		0x187 /* dummy ID */
 #define MXC_CPU_IMX8MPD		0x188 /* dummy ID */
 #define MXC_CPU_IMX8MPUL	0x189 /* dummy ID */
+#define MXC_CPU_IMX8MPD2	0x18c /* dummy ID */
+#define MXC_CPU_IMX8MP5		0x18d /* dummy ID */
 #define MXC_CPU_IMX8QXP_A0	0x90 /* dummy ID */
 #define MXC_CPU_IMX8QM		0x91 /* dummy ID */
 #define MXC_CPU_IMX8QXP		0x92 /* dummy ID */
@@ -75,6 +77,11 @@
 #define MXC_CPU_IMX9121		0xCC /* dummy ID */
 #define MXC_CPU_IMX9111		0xCD /* dummy ID */
 #define MXC_CPU_IMX9101		0xCE /* dummy ID */
+
+#define MXC_CPU_IMX95		0x1C1 /* dummy ID */
+
+#define MXC_CPU_IMX94		0x1C2 /* dummy ID */
+#define MXC_CPU_IMX952		0x1C3 /* dummy ID */
 
 #define MXC_SOC_MX6		0x60
 #define MXC_SOC_MX7		0x70

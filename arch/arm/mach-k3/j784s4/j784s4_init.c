@@ -17,6 +17,7 @@
 #include <dm/pinctrl.h>
 #include <mmc.h>
 #include <remoteproc.h>
+#include <k3_bist.h>
 
 #include "../sysfw-loader.h"
 #include "../common.h"
@@ -43,6 +44,15 @@
 #define NB_THREADMAP_BIT0				BIT(0)
 #define NB_THREADMAP_BIT1				BIT(1)
 #define NB_THREADMAP_BIT2				BIT(2)
+
+/*
+ * RAT mapping for errata ID: i2437
+ */
+#define RAT_ERRATA_2437_BASE_REGION0		0x40f90000
+#define RAT_ERRATA_2437_IN_ADDR			0xc0000000
+#define RAT_ERRATA_2437_OUT_ADDR_U		0x0000004d
+#define RAT_ERRATA_2437_OUT_ADDR_L		0x21000000
+#define RAT_ERRATA_2437_CTRL			0x80000010
 
 struct fwl_data infra_cbass0_fwls[] = {
 	{ "PSC0", 5, 1 },
@@ -120,6 +130,48 @@ static void setup_navss_nb(void)
 {
 	writel(NB_THREADMAP_BIT1, (uintptr_t)NAVSS0_NBSS_NB0_CFG_NB_THREADMAP);
 	writel(NB_THREADMAP_BIT2, (uintptr_t)NAVSS0_NBSS_NB1_CFG_NB_THREADMAP);
+}
+
+/* Execute and check results of BIST executed on MCU1_x and MCU4_O */
+static void run_bist_j784s4(struct udevice *dev)
+{
+	struct bist_ops *ops;
+	struct ti_sci_handle *handle;
+	int ret;
+
+	ops = (struct bist_ops *)device_get_ops(dev);
+	handle = get_ti_sci_handle();
+
+	/* get status of HW POST PBIST on MCU1_x */
+	if (ops->run_pbist_post())
+		panic("HW POST LBIST on MCU1_x failed\n");
+
+	/* trigger PBIST tests on MCU4_0 */
+	ret = prepare_pbist(handle);
+	ret |= ops->run_pbist_neg();
+	ret |= deprepare_pbist(handle);
+
+	ret |= prepare_pbist(handle);
+	ret |= ops->run_pbist();
+	ret |= deprepare_pbist(handle);
+
+	ret |= prepare_pbist(handle);
+	ret |= ops->run_pbist_rom();
+	ret |= deprepare_pbist(handle);
+
+	if (ret)
+		panic("PBIST on MCU4_0 failed: %d\n", ret);
+
+	/* get status of HW POST PBIST on MCU1_x */
+	if (ops->run_lbist_post())
+		panic("HW POST LBIST on MCU1_x failed\n");
+
+	/* trigger LBIST tests on MCU1_x */
+	ret = prepare_lbist(handle);
+	ret |= ops->run_lbist();
+	ret |= deprepare_lbist(handle);
+	if (ret)
+		panic("LBIST on MCU4_0 failed: %d\n", ret);
 }
 
 /*
@@ -206,8 +258,19 @@ void k3_spl_init(void)
 
 	writel(AUDIO_REFCLK1_DEFAULT, (uintptr_t)CTRL_MMR_CFG0_AUDIO_REFCLK1_CTRL);
 
+	/* Shutdown MCU_R5 Core 1 in Split mode at A72 SPL Stage */
+	if (IS_ENABLED(CONFIG_ARM64)) {
+		ret = shutdown_mcu_r5_core1();
+		if (ret)
+			printf("Unable to shutdown MCU R5 core 1, %d\n", ret);
+	}
+
 	/* Output System Firmware version info */
 	k3_sysfw_print_ver();
+
+	/* Output DM Firmware version info */
+	if (IS_ENABLED(CONFIG_ARM64))
+		k3_dm_print_ver();
 }
 
 void k3_mem_init(void)
@@ -242,6 +305,10 @@ void board_init_f(ulong dummy)
 	int ret;
 
 	k3_spl_init();
+
+	/* Perform board detection */
+	do_board_detect();
+
 	k3_mem_init();
 
 	if (IS_ENABLED(CONFIG_CPU_V7R) && IS_ENABLED(CONFIG_K3_AVS0)) {
@@ -251,10 +318,49 @@ void board_init_f(ulong dummy)
 			printf("AVS init failed: %d\n", ret);
 	}
 
+	if (!IS_ENABLED(CONFIG_CPU_V7R) && IS_ENABLED(CONFIG_K3_BIST)) {
+		ret = uclass_get_device_by_driver(UCLASS_MISC,
+						  DM_DRIVER_GET(k3_bist),
+						  &dev);
+		if (ret)
+			panic("Failed to get BIST device: %d\n", ret);
+		run_bist_j784s4(dev);
+	}
+
 	if (IS_ENABLED(CONFIG_CPU_V7R))
 		setup_navss_nb();
 
 	setup_qos();
+
+	if (IS_ENABLED(CONFIG_CPU_V7R)) {
+		/*
+		 * Errata ID i2437 SE Clock-Gating Turning Off Too Early
+		 *
+		 * A hardware bug is present in the C7120 Streaming Engine top level
+		 * clock gating logic that can lead to the C7120 CPU hanging.
+
+		 * Workaround: The DSP_<COREID>_DEBUG_CLKEN_OVERRIDE fields of the
+		 * COMPUTE_CLUSTER_CFG_WRAP_0_CC_CNTRL register (where COREID is the
+		 * name of the specific C7120 core) must be enabled before power-up
+		 * of the C7120 core to override all clock-gating.
+		 */
+
+		/* Setup RAT mapping */
+		debug("Errata i2437: Use RAT for COMPUTE_CLUSTER_CFG_WRAP_0_CC_CNTRL register\n");
+		writel_verify(RAT_ERRATA_2437_IN_ADDR, RAT_ERRATA_2437_BASE_REGION0 + 0x24);
+		writel_verify(RAT_ERRATA_2437_OUT_ADDR_L, RAT_ERRATA_2437_BASE_REGION0 + 0x28);
+		writel_verify(RAT_ERRATA_2437_OUT_ADDR_U, RAT_ERRATA_2437_BASE_REGION0 + 0x2c);
+		writel_verify(RAT_ERRATA_2437_CTRL, RAT_ERRATA_2437_BASE_REGION0 + 0x20);
+
+		/* Enable DSP_X_DEBUG_CLKEN_OVERRIDE for C71x cores */
+		writel_verify(0xF00, RAT_ERRATA_2437_IN_ADDR + 0x200);
+
+		/* Clear RAT mapping */
+		writel_verify(0, RAT_ERRATA_2437_BASE_REGION0 + 0x20);
+		writel_verify(0, RAT_ERRATA_2437_BASE_REGION0 + 0x24);
+		writel_verify(0, RAT_ERRATA_2437_BASE_REGION0 + 0x28);
+		writel_verify(0, RAT_ERRATA_2437_BASE_REGION0 + 0x2c);
+	}
 }
 
 u32 spl_mmc_boot_mode(struct mmc *mmc, const u32 boot_device)

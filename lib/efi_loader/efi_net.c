@@ -17,7 +17,9 @@
 
 #define LOG_CATEGORY LOGC_EFI
 
+#include <efi_device_path.h>
 #include <efi_loader.h>
+#include <env.h>
 #include <dm.h>
 #include <linux/sizes.h>
 #include <malloc.h>
@@ -51,7 +53,7 @@ static int next_dp_entry;
 static struct wget_http_info efi_wget_info = {
 	.set_bootdev = false,
 	.check_buffer_size = true,
-
+	.silent = true,
 };
 #endif
 
@@ -370,7 +372,7 @@ out:
 }
 
 /*
- * efi_net_receive_filters() - mange multicast receive filters
+ * efi_net_receive_filters() - manage multicast receive filters
  *
  * This function implements the ReceiveFilters service of the
  * EFI_SIMPLE_NETWORK_PROTOCOL. See the Unified Extensible Firmware Interface
@@ -1022,8 +1024,10 @@ efi_status_t efi_netobj_set_dp(struct efi_net_obj *netobj, struct efi_device_pat
 		goto add;
 
 	// If it is already installed, try to update it
-	ret = efi_reinstall_protocol_interface(&netobj->header, &efi_guid_device_path,
-					       phandler->protocol_interface, new_net_dp);
+	ret = EFI_CALL(efi_reinstall_protocol_interface(&netobj->header,
+							&efi_guid_device_path,
+							phandler->protocol_interface,
+							new_net_dp));
 	if (ret != EFI_SUCCESS)
 		return ret;
 
@@ -1129,7 +1133,7 @@ efi_status_t efi_net_register(struct udevice *dev)
 	struct efi_net_obj *netobj;
 	void *transmit_buffer = NULL;
 	uchar **receive_buffer = NULL;
-	size_t *receive_lengths;
+	size_t *receive_lengths = NULL;
 	int i, j;
 
 	if (!dev) {

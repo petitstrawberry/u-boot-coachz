@@ -7,11 +7,8 @@
 #include <dm.h>
 #include <errno.h>
 #include <malloc.h>
-#include <asm/global_data.h>
 #include <asm/io.h>
 #include <asm/gpio.h>
-
-DECLARE_GLOBAL_DATA_PTR;
 
 struct nx_gpio_regs {
 	u32	data;		/* Data register */
@@ -216,9 +213,10 @@ static int nx_gpio_of_to_plat(struct udevice *dev)
 {
 	struct nx_gpio_plat *plat = dev_get_plat(dev);
 
-	plat->regs = map_physmem(devfdt_get_addr(dev),
-				 sizeof(struct nx_gpio_regs),
-				 MAP_NOCACHE);
+	plat->regs = dev_remap_addr(dev);
+	if (!plat->regs)
+		return -EINVAL;
+
 	plat->gpio_count = dev_read_s32_default(dev, "nexell,gpio-bank-width",
 						32);
 	plat->bank_name = dev_read_string(dev, "gpio-bank-name");

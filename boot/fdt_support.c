@@ -27,6 +27,7 @@
 #include <fdtdec.h>
 #include <version.h>
 #include <video.h>
+#include <smbios.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -157,6 +158,12 @@ static int fdt_fixup_stdout(void *fdt, int chosenoff)
 	if (!path) {
 		err = len;
 		goto noalias;
+	}
+
+	if (len > (int)sizeof(tmp)) {
+		debug("%s: %s alias path too long (%d bytes)\n",
+		      __func__, sername, len);
+		return -FDT_ERR_NOSPACE;
 	}
 
 	/* fdt_setprop may break "path" so we copy it to tmp buffer */
@@ -333,6 +340,7 @@ int fdt_chosen(void *fdt)
 	int   nodeoffset;
 	int   err;
 	const char *str;		/* used to set string properties */
+	ulong smbiosaddr;		/* SMBIOS table address */
 
 	err = fdt_check_header(fdt);
 	if (err < 0) {
@@ -385,6 +393,23 @@ int fdt_chosen(void *fdt)
 		printf("WARNING: could not set u-boot,version %s.\n",
 		       fdt_strerror(err));
 		return err;
+	}
+
+	if (CONFIG_IS_ENABLED(GENERATE_SMBIOS_TABLE)) {
+		/* Inject SMBIOS address when we have a valid address.
+		* This is useful for systems using booti/bootm instead of bootefi.
+		* Failure to set this property is non-fatal, we only generate a
+		* warning.
+		*/
+		smbiosaddr = gd_smbios_start();
+		if (smbiosaddr) {
+			err = fdt_setprop_u64(fdt, nodeoffset, "smbios3-entrypoint",
+					smbiosaddr);
+			if (err < 0) {
+				printf("WARNING: could not set smbios3-entrypoint %s.\n",
+				fdt_strerror(err));
+			}
+		}
 	}
 
 	return fdt_fixup_stdout(fdt, nodeoffset);
@@ -526,13 +551,13 @@ int fdt_fixup_memory_banks(void *blob, u64 start[], u64 size[], int banks)
 	if (banks > MEMORY_BANKS_MAX) {
 		printf("%s: num banks %d exceeds hardcoded limit %d."
 		       " Recompile with higher MEMORY_BANKS_MAX?\n",
-		       __FUNCTION__, banks, MEMORY_BANKS_MAX);
+		       __func__, banks, MEMORY_BANKS_MAX);
 		return -1;
 	}
 
 	err = fdt_check_header(blob);
 	if (err < 0) {
-		printf("%s: %s\n", __FUNCTION__, fdt_strerror(err));
+		printf("%s: %s\n", __func__, fdt_strerror(err));
 		return err;
 	}
 
@@ -1500,7 +1525,7 @@ static u64 __of_translate_address(const void *blob, int node_offset,
 	/* Cound address cells & copy address locally */
 	bus->count_cells(blob, parent, &na, &ns);
 	if (!OF_CHECK_COUNTS(na, ns)) {
-		printf("%s: Bad cell count for %s\n", __FUNCTION__,
+		printf("%s: Bad cell count for %s\n", __func__,
 		       fdt_get_name(blob, node_offset, NULL));
 		goto bail;
 	}
@@ -1527,8 +1552,8 @@ static u64 __of_translate_address(const void *blob, int node_offset,
 		pbus = of_match_bus(blob, parent);
 		pbus->count_cells(blob, parent, &pna, &pns);
 		if (!OF_CHECK_COUNTS(pna, pns)) {
-			printf("%s: Bad cell count for %s\n", __FUNCTION__,
-				fdt_get_name(blob, node_offset, NULL));
+			printf("%s: Bad cell count for %s\n", __func__,
+			       fdt_get_name(blob, node_offset, NULL));
 			break;
 		}
 
@@ -1615,7 +1640,7 @@ int fdt_get_dma_range(const void *blob, int node, phys_addr_t *cpu,
 	bus_node = of_match_bus(blob, node);
 	bus_node->count_cells(blob, node, &na, &ns);
 	if (!OF_CHECK_COUNTS(na, ns)) {
-		printf("%s: Bad cell count for %s\n", __FUNCTION__,
+		printf("%s: Bad cell count for %s\n", __func__,
 		       fdt_get_name(blob, node, NULL));
 		return -EINVAL;
 		goto out;
@@ -1624,9 +1649,16 @@ int fdt_get_dma_range(const void *blob, int node, phys_addr_t *cpu,
 	bus_node = of_match_bus(blob, parent);
 	bus_node->count_cells(blob, parent, &pna, &pns);
 	if (!OF_CHECK_COUNTS(pna, pns)) {
-		printf("%s: Bad cell count for %s\n", __FUNCTION__,
+		printf("%s: Bad cell count for %s\n", __func__,
 		       fdt_get_name(blob, parent, NULL));
 		return -EINVAL;
+		goto out;
+	}
+
+	if (len < (int)((na + pna + ns) * sizeof(*ranges))) {
+		debug("%s: dma-ranges too short for %s\n", __func__,
+		      fdt_get_name(blob, node, NULL));
+		ret = -EINVAL;
 		goto out;
 	}
 

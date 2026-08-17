@@ -35,7 +35,6 @@
 
 #define CFG_EXTRA_ENV_SETTINGS \
 	"console=ttymxc0,115200 quiet\0" \
-	"fdt_high=0xffffffff\0" \
 	"initrd_high=0xffffffff\0" \
 	"boot_os=yes\0" \
 	"kernelsize=0x300000\0" \
@@ -89,7 +88,7 @@
 		     "bootm $loadaddr};reset;" \
 		"fi\0" \
 	"bootcmd=" \
-		"if test -n ${recovery_status}; then " \
+		"if test -n \"${recovery_status}\"; then " \
 		     "run boot_recovery;" \
 		"else " \
 		     "if test ! -n ${boot_medium}; then " \

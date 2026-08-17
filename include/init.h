@@ -14,11 +14,17 @@
 
 #include <linux/types.h>
 
+struct ram_alias_check {
+	void *probe_addr;
+	void *alias_addr;
+	long size;
+};
+
 /*
  * In case of the EFI app the UEFI firmware provides the low-level
  * initialisation.
  */
-#ifdef CONFIG_EFI
+#ifdef CONFIG_EFI_CLIENT
 #define ll_boot_init()	false
 #else
 #include <asm/global_data.h>
@@ -74,7 +80,7 @@ int dram_init(void);
  * dram_init_banksize() - Set up DRAM bank sizes
  *
  * This can be implemented by boards to set up the DRAM bank information in
- * gd->bd->bi_dram(). It is called just before relocation, after dram_init()
+ * gd->dram[] It is called just before relocation, after dram_init()
  * is called.
  *
  * If this is not provided, a default implementation will try to set up a
@@ -88,6 +94,7 @@ int dram_init(void);
 int dram_init_banksize(void);
 
 long get_ram_size(long *base, long size);
+long probe_ram_size_by_alias(const struct ram_alias_check *checks);
 phys_size_t get_effective_memsize(void);
 
 int testdram(void);

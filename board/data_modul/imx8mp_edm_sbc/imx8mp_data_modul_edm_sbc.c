@@ -17,8 +17,6 @@
 
 #include "../common/common.h"
 
-DECLARE_GLOBAL_DATA_PTR;
-
 static void dmo_setup_second_mac_address(void)
 {
 	u8 enetaddr[6];
@@ -44,11 +42,6 @@ enum env_location env_get_location(enum env_operation op, int prio)
 {
 	/* Environment is always in eMMC boot partitions */
 	return prio ? ENVL_UNKNOWN : ENVL_MMC;
-}
-
-int board_init(void)
-{
-	return 0;
 }
 
 int board_late_init(void)

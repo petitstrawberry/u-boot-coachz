@@ -64,7 +64,11 @@ static int sandbox_power_domain_bind(struct udevice *dev)
 
 static int sandbox_power_domain_probe(struct udevice *dev)
 {
+	struct power_domain_plat *plat = dev_get_uclass_plat(dev);
+
 	debug("%s(dev=%p)\n", __func__, dev);
+
+	plat->subdomains = 1;
 
 	return 0;
 }
@@ -74,7 +78,7 @@ static const struct udevice_id sandbox_power_domain_ids[] = {
 	{ }
 };
 
-struct power_domain_ops sandbox_power_domain_ops = {
+static const struct power_domain_ops sandbox_power_domain_ops = {
 	.request = sandbox_power_domain_request,
 	.rfree = sandbox_power_domain_free,
 	.on = sandbox_power_domain_on,

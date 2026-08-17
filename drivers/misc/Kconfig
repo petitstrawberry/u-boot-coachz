@@ -71,9 +71,9 @@ config ATSHA204A
 	select BITREVERSE
 	depends on MISC
 	help
-	   Enable support for I2C connected Atmel's ATSHA204A
-	   CryptoAuthentication module found for example on the Turris Omnia
-	   board.
+	  Enable support for I2C connected Atmel's ATSHA204A
+	  CryptoAuthentication module found for example on the Turris Omnia
+	  board.
 
 config GATEWORKS_SC
 	bool "Gateworks System Controller Support"
@@ -83,8 +83,18 @@ config GATEWORKS_SC
 	  boards to provide a boot watchdog, power control, temperature monitor,
 	  voltage ADCs, and EEPROM.
 
+config QCOM_GENI
+	bool "Qualcomm Generic Interface (GENI) driver"
+	depends on MISC
+	select EFI_PARTITION
+	select PARTITION_TYPE_GUID
+	help
+	  Enable support for Qualcomm GENI and it's peripherals. GENI is responseible
+	  for providing a common interface for various peripherals like UART, I2C, SPI,
+	  etc.
+
 config ROCKCHIP_EFUSE
-        bool "Rockchip e-fuse support"
+	bool "Rockchip e-fuse support"
 	depends on MISC
 	help
 	  Enable (read-only) access for the e-fuse block found in Rockchip
@@ -104,9 +114,21 @@ config ROCKCHIP_OTP
 config ROCKCHIP_IODOMAIN
 	bool "Rockchip IO-domain driver support"
 	depends on DM_REGULATOR && ARCH_ROCKCHIP
-	default y if ROCKCHIP_RK3328 || ROCKCHIP_RK3568
+	default y if ROCKCHIP_PX30
+	default y if ROCKCHIP_RK3308
+	default y if ROCKCHIP_RK3328
+	default y if ROCKCHIP_RK3399
+	default y if ROCKCHIP_RK3568
 	help
 	  Enable support for IO-domains in Rockchip SoCs. It is necessary
+	  for the IO-domain setting of the SoC to match the voltage supplied
+	  by the regulators.
+
+config SPL_ROCKCHIP_IODOMAIN
+	bool "Rockchip IO-domain driver support in SPL"
+	depends on SPL_MISC && SPL_DM_REGULATOR && ARCH_ROCKCHIP
+	help
+	  Enable support for IO-domains in Rockchip SoCs in SPL. It is necessary
 	  for the IO-domain setting of the SoC to match the voltage supplied
 	  by the regulators.
 
@@ -235,7 +257,7 @@ config VPL_CROS_EC_LPC
 
 config CROS_EC_SANDBOX
 	bool "Enable Chrome OS EC sandbox driver"
-	depends on CROS_EC && SANDBOX
+	depends on CROS_EC && SANDBOX && HASH
 	help
 	  Enable a sandbox emulation of the Chrome OS EC. This supports
 	  keyboard (use the -l flag to enable the LCD), verified boot context,
@@ -278,39 +300,9 @@ config CROS_EC_SPI
 	  provides a faster and more robust interface than I2C but the bugs
 	  are less interesting.
 
-config DS4510
-	bool "Enable support for DS4510 CPU supervisor"
-	help
-	  Enable support for the Maxim DS4510 CPU supervisor. It has an
-	  integrated 64-byte EEPROM, four programmable non-volatile I/O pins
-	  and a configurable timer for the supervisor function. The device is
-	  connected over I2C.
-
 config FSL_IIM
 	bool "Enable FSL IC Identification Module (IIM) driver"
-	depends on ARCH_MX31 || ARCH_MX5
-
-config FSL_SEC_MON
-	bool "Enable FSL SEC_MON Driver"
-	help
-	  Freescale Security Monitor block is responsible for monitoring
-	  system states.
-	  Security Monitor can be transitioned on any security failures,
-	  like software violations or hardware security violations.
-
-choice
-	prompt "Security monitor interaction endianess"
-	depends on FSL_SEC_MON
-	default SYS_FSL_SEC_MON_BE if PPC
-	default SYS_FSL_SEC_MON_LE
-
-config SYS_FSL_SEC_MON_LE
-	bool "Security monitor interactions are little endian"
-
-config SYS_FSL_SEC_MON_BE
-	bool "Security monitor interactions are big endian"
-
-endchoice
+	depends on ARCH_MX5
 
 config IRQ
 	bool "Interrupt controller"
@@ -359,7 +351,8 @@ config MXS_OCOTP
 
 config NPCM_HOST
 	bool "Enable support espi or LPC for Host"
-	depends on REGMAP && SYSCON
+	depends on SYSCON
+	select REGMAP
 	help
 	  Enable NPCM BMC espi or LPC support for Host reading and writing.
 
@@ -446,19 +439,6 @@ config SPL_PWRSEQ
 	  device. When the device is started up, its power sequence can be
 	  initiated.
 
-config PCA9551_LED
-	bool "Enable PCA9551 LED driver"
-	help
-	  Enable driver for PCA9551 LED controller. This controller
-	  is connected via I2C. So I2C needs to be enabled.
-
-config PCA9551_I2C_ADDR
-	hex "I2C address of PCA9551 LED controller"
-	depends on PCA9551_LED
-	default 0x60
-	help
-	  The I2C address of the PCA9551 LED controller.
-
 config STM32MP_FUSE
 	bool "Enable STM32MP fuse wrapper providing the fuse API"
 	depends on ARCH_STM32MP && MISC
@@ -471,6 +451,7 @@ config STM32MP_FUSE
 config K3_FUSE
 	bool "Enable TI K3 fuse wrapper providing the fuse API"
 	depends on MISC && CMD_FUSE && CMD_FUSE_WRITEBUFF
+	depends on ARCH_K3
 	help
 	  If you say Y here, you will get support for the fuse API (OTP)
 	  for TI K3 architecture.
@@ -524,7 +505,7 @@ config TURRIS_OMNIA_MCU
 	  board power off.
 
 config USB_HUB_USB251XB
-	tristate "USB251XB Hub Controller Configuration Driver"
+	bool "USB251XB Hub Controller Configuration Driver"
 	depends on I2C
 	help
 	  This option enables support for configuration via SMBus of the
@@ -660,17 +641,26 @@ config GDSYS_SOC
 
 config IHS_FPGA
 	bool "Enable IHS FPGA driver"
-	depends on MISC
+	depends on MISC && (GDSYS_LEGACY_DRIVERS || SYS_FPGA_FLAVOR_GAZERBEAM)
 	help
 	  Support IHS (Integrated Hardware Systems) FPGA, the main FPGAs on
 	  gdsys devices, which supply the majority of the functionality offered
 	  by the devices. This driver supports both CON and CPU variants of the
 	  devices, depending on the device tree entry.
+
 config ESM_K3
 	bool "Enable K3 ESM driver"
 	depends on ARCH_K3
 	help
 	  Support ESM (Error Signaling Module) on TI K3 SoCs.
+
+config K3_BIST
+	bool "Enable K3 BIST driver"
+	depends on ARCH_K3
+	help
+	  Support BIST (Built-In Self Test) module on TI K3 SoCs. This driver
+	  supports running both PBIST (Memory BIST) and LBIST (Logic BIST) on
+	  a region or IP in the SoC.
 
 config MICROCHIP_FLEXCOM
 	bool "Enable Microchip Flexcom driver"
@@ -680,6 +670,15 @@ config MICROCHIP_FLEXCOM
 	  an I2C controller and an USART.
 	  Only one function can be used at a time and is chosen at boot time
 	  according to the device tree.
+
+config MPFS_SYSCONTROLLER
+	bool "Enable Microchip PolarFire SoC (MPFS) System Services support"
+	depends on MISC
+	depends on MPFS_MBOX
+	help
+	  This driver adds support for the PolarFire SoC (MPFS) system controller.
+
+	  If unsure, say N.
 
 config K3_AVS0
 	depends on ARCH_K3 && SPL_DM_REGULATOR
@@ -698,7 +697,12 @@ config ESM_PMIC
 	  typically to reboot the board in error condition.
 
 config FSL_IFC
-	bool
+	bool "Freescale Integrated Flash Controller"
+	depends on ARM || PPC
+	help
+	  This driver is for the Integrated Flash Controller(IFC) module
+	  available in Freescale SoCs. This controller allows to handle
+	  devices such as NOR, NAND, FPGA and ASIC etc.
 
 config SL28CPLD
 	bool "Enable Kontron sl28cpld multi-function driver"

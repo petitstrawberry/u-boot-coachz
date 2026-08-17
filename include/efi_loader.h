@@ -9,16 +9,13 @@
 #define _EFI_LOADER_H 1
 
 #include <blk.h>
+#include <efi_device_path.h>
 #include <event.h>
-#include <log.h>
-#include <part_efi.h>
 #include <efi_api.h>
 #include <image.h>
-#include <pe.h>
 #include <setjmp.h>
 #include <linux/list.h>
 #include <linux/sizes.h>
-#include <linux/oid_registry.h>
 
 struct blk_desc;
 struct bootflow;
@@ -315,6 +312,8 @@ extern const struct efi_hii_config_routing_protocol efi_hii_config_routing;
 extern const struct efi_hii_config_access_protocol efi_hii_config_access;
 extern const struct efi_hii_database_protocol efi_hii_database;
 extern const struct efi_hii_string_protocol efi_hii_string;
+/* structure for EFI_DEBUG_SUPPORT_PROTOCOL */
+extern struct efi_debug_image_info_table_header efi_m_debug_info_table_header;
 
 uint16_t *efi_dp_str(struct efi_device_path *dp);
 
@@ -388,6 +387,10 @@ extern const efi_guid_t efi_guid_capsule_report;
 extern const efi_guid_t efi_guid_firmware_management_protocol;
 /* GUID for the ESRT */
 extern const efi_guid_t efi_esrt_guid;
+/* GUID for the ECPT */
+#if CONFIG_IS_ENABLED(EFI_ECPT)
+extern const efi_guid_t efi_ecpt_guid;
+#endif
 /* GUID of the SMBIOS table */
 extern const efi_guid_t smbios_guid;
 extern const efi_guid_t smbios3_guid;
@@ -588,8 +591,27 @@ efi_status_t efi_bootmgr_delete_boot_option(u16 boot_index);
 efi_status_t efi_bootmgr_run(void *fdt);
 /* search the boot option index in BootOrder */
 bool efi_search_bootorder(u16 *bootorder, efi_uintn_t num, u32 target, u32 *index);
-/* Set up console modes */
+
+/**
+ * efi_setup_console_size() - update the mode table.
+ *
+ * By default the only mode available is 80x25. If the console has at least 50
+ * lines, enable mode 80x50. If we can query the console size and it is neither
+ * 80x25 nor 80x50, set it as an additional mode.
+ */
 void efi_setup_console_size(void);
+
+/**
+ * efi_console_set_ansi() - Set whether ANSI escape-characters should be emitted
+ *
+ * These characters mess up tests which use ut_assert_nextline(). Call this
+ * function to tell efi_loader not to emit these characters when starting up the
+ * terminal
+ *
+ * @allow_ansi: Allow emitting ANSI escape-characters
+ */
+void efi_console_set_ansi(bool allow_ansi);
+
 /* Set up load options from environment variable */
 efi_status_t efi_env_set_load_options(efi_handle_t handle, const char *env_var,
 				      u16 **load_options);
@@ -597,6 +619,8 @@ efi_status_t efi_env_set_load_options(efi_handle_t handle, const char *env_var,
 void *efi_get_configuration_table(const efi_guid_t *guid);
 /* Install device tree */
 efi_status_t efi_install_fdt(void *fdt);
+/* Install initrd */
+efi_status_t efi_install_initrd(void *initrd, size_t initd_sz);
 /* Execute loaded UEFI image */
 efi_status_t do_bootefi_exec(efi_handle_t handle, void *load_options);
 /* Run loaded UEFI image with given fdt */
@@ -625,6 +649,13 @@ efi_status_t efi_tcg2_measure_dtb(void *dtb);
 efi_status_t efi_root_node_register(void);
 /* Called by bootefi to initialize runtime */
 efi_status_t efi_initialize_system_table(void);
+/* Called by bootefi to initialize debug */
+efi_status_t efi_initialize_system_table_pointer(void);
+/* Called by efi_load_image for register debug info */
+efi_status_t efi_core_new_debug_image_info_entry(u32 image_info_type,
+						 struct efi_loaded_image *loaded_image,
+						 efi_handle_t image_handle);
+void efi_core_remove_debug_image_info_entry(efi_handle_t image_handle);
 /* efi_runtime_detach() - detach unimplemented runtime functions */
 void efi_runtime_detach(void);
 /* efi_convert_pointer() - convert pointer to virtual address */
@@ -853,6 +884,16 @@ efi_status_t efi_next_variable_name(efi_uintn_t *size, u16 **buf,
 #define efi_size_in_pages(size) (((size) + EFI_PAGE_MASK) >> EFI_PAGE_SHIFT)
 /* Allocate boot service data pool memory */
 void *efi_alloc(size_t len);
+/**
+ * efi_realloc() - reallocate boot services data pool memory
+ *
+ * Reallocate memory from pool for a new size and copy the data from old one.
+ *
+ * @ptr:	pointer to the buffer
+ * @size:	number of bytes to allocate
+ * Return:	EFI status to indicate success or not
+ */
+efi_status_t efi_realloc(void **ptr, size_t len);
 /* Allocate pages on the specified alignment */
 void *efi_alloc_aligned_pages(u64 len, int memory_type, size_t align);
 /* More specific EFI memory allocator, called by EFI payloads */
@@ -914,65 +955,9 @@ extern void *efi_bounce_buffer;
 #define EFI_LOADER_BOUNCE_BUFFER_SIZE (64 * 1024 * 1024)
 #endif
 
-/* shorten device path */
-struct efi_device_path *efi_dp_shorten(struct efi_device_path *dp);
-struct efi_device_path *efi_dp_next(const struct efi_device_path *dp);
-int efi_dp_match(const struct efi_device_path *a,
-		 const struct efi_device_path *b);
-efi_handle_t efi_dp_find_obj(struct efi_device_path *dp,
-			     const efi_guid_t *guid,
-			     struct efi_device_path **rem);
-/* get size of the first device path instance excluding end node */
-efi_uintn_t efi_dp_instance_size(const struct efi_device_path *dp);
-/* size of multi-instance device path excluding end node */
-efi_uintn_t efi_dp_size(const struct efi_device_path *dp);
-struct efi_device_path *efi_dp_dup(const struct efi_device_path *dp);
-struct efi_device_path *efi_dp_append_node(const struct efi_device_path *dp,
-					   const struct efi_device_path *node);
-/* Create a device path node of given type, sub-type, length */
-struct efi_device_path *efi_dp_create_device_node(const u8 type,
-						  const u8 sub_type,
-						  const u16 length);
-/* Append device path instance */
-struct efi_device_path *efi_dp_append_instance(
-		const struct efi_device_path *dp,
-		const struct efi_device_path *dpi);
-/* Get next device path instance */
-struct efi_device_path *efi_dp_get_next_instance(struct efi_device_path **dp,
-						 efi_uintn_t *size);
-/* Check if a device path contains muliple instances */
-bool efi_dp_is_multi_instance(const struct efi_device_path *dp);
-
-struct efi_device_path *efi_dp_from_part(struct blk_desc *desc, int part);
-/* Create a device node for a block device partition. */
-struct efi_device_path *efi_dp_part_node(struct blk_desc *desc, int part);
-struct efi_device_path *efi_dp_from_file(const struct efi_device_path *dp,
-					 const char *path);
-struct efi_device_path *efi_dp_from_eth(struct udevice *dev);
-struct efi_device_path *efi_dp_from_http(const char *server, struct udevice *dev);
-struct efi_device_path *efi_dp_from_mem(uint32_t mem_type,
-					uint64_t start_address,
-					size_t size);
-/* Determine the last device path node that is not the end node. */
-const struct efi_device_path *efi_dp_last_node(
-			const struct efi_device_path *dp);
-efi_status_t efi_dp_split_file_path(struct efi_device_path *full_path,
-				    struct efi_device_path **device_path,
-				    struct efi_device_path **file_path);
-struct efi_device_path *efi_dp_from_uart(void);
-efi_status_t efi_dp_from_name(const char *dev, const char *devnr,
-			      const char *path,
-			      struct efi_device_path **device,
-			      struct efi_device_path **file);
-ssize_t efi_dp_check_length(const struct efi_device_path *dp,
-			    const size_t maxlen);
-
 #define EFI_DP_TYPE(_dp, _type, _subtype) \
 	(((_dp)->type == DEVICE_PATH_TYPE_##_type) && \
 	 ((_dp)->sub_type == DEVICE_PATH_SUB_TYPE_##_subtype))
-
-/* template END node: */
-extern const struct efi_device_path END;
 
 /* Indicate supported runtime services */
 efi_status_t efi_init_runtime_supported(void);
@@ -1162,6 +1147,9 @@ struct pkcs7_message *efi_parse_pkcs7_header(const void *buf,
 
 /* runtime implementation of memcpy() */
 void efi_memcpy_runtime(void *dest, const void *src, size_t n);
+
+/* runtime implementation of memcmp() */
+int efi_memcmp_runtime(const void *s1, const void *s2, size_t n);
 
 /* commonly used helper functions */
 u16 *efi_create_indexed_name(u16 *buffer, size_t buffer_size, const char *name,

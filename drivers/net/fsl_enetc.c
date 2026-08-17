@@ -6,7 +6,9 @@
  */
 
 #include <clk.h>
+#include <cpu_func.h>
 #include <dm.h>
+#include <dm/device_compat.h>
 #include <errno.h>
 #include <fdt_support.h>
 #include <malloc.h>
@@ -16,16 +18,24 @@
 #include <asm/io.h>
 #include <pci.h>
 #include <miiphy.h>
+#include <linux/bitfield.h>
 #include <linux/bug.h>
 #include <linux/delay.h>
 #include <linux/build_bug.h>
+#include <linux/bitfield.h>
+#include <power/regulator.h>
+#include "fsl_enetc.h"
 
 #ifdef CONFIG_ARCH_IMX9
 #include <asm/mach-imx/sys_proto.h>
 #include <cpu_func.h>
+#include "fsl_enetc_xpcs_phy.c"
+#else
+static inline int xpcs_phy_usxgmii_pma_config(struct udevice *dev)
+{
+	return 0;
+}
 #endif
-
-#include "fsl_enetc.h"
 
 #define ENETC_DRIVER_NAME	"enetc_eth"
 
@@ -65,10 +75,36 @@ static int enetc_is_ls1028a(struct udevice *dev)
 	       pplat->vendor == PCI_VENDOR_ID_FREESCALE;
 }
 
+static int enetc_dev_id_imx(struct udevice *dev)
+{
+	if (IS_ENABLED(CONFIG_IMX952)) {
+		int bus_devfn;
+		u32 reg[5];
+		int error;
+
+		error = dev_read_u32_array(dev, "reg", reg, ARRAY_SIZE(reg));
+		if (error)
+			return error;
+
+		bus_devfn = (reg[0] >> 8) & 0xffff;
+
+		switch (bus_devfn) {
+		case 0:
+			return 0;
+		case 0x100:
+			return 1;
+		default:
+			return -EINVAL;
+		}
+	}
+
+	return PCI_DEV(pci_get_devfn(dev)) >> 3;
+}
+
 static int enetc_dev_id(struct udevice *dev)
 {
 	if (enetc_is_imx95(dev))
-		return PCI_DEV(pci_get_devfn(dev)) >> 3;
+		return enetc_dev_id_imx(dev);
 	if (enetc_is_ls1028a(dev))
 		return PCI_FUNC(pci_get_devfn(dev));
 
@@ -387,7 +423,7 @@ static int enetc_init_sgmii(struct udevice *dev)
 /* set up MAC for RGMII */
 static void enetc_init_rgmii(struct udevice *dev, struct phy_device *phydev)
 {
-	u32 old_val, val, dpx = 0;
+	u32 old_val, val = 0;
 
 	old_val = val = enetc_read_mac_port(dev, ENETC_PM_IF_MODE);
 
@@ -407,15 +443,14 @@ static void enetc_init_rgmii(struct udevice *dev, struct phy_device *phydev)
 		val |= ENETC_PM_IFM_SSP_10;
 	}
 
-	if (enetc_is_imx95(dev))
-		dpx = ENETC_PM_IFM_FULL_DPX_IMX;
+	if  (enetc_is_imx95(dev))
+		val = u32_replace_bits(val,
+				       phydev->duplex == DUPLEX_FULL ? 0 : 1,
+				       ENETC_PM_IFM_FULL_DPX_IMX);
 	else if (enetc_is_ls1028a(dev))
-		dpx = ENETC_PM_IFM_FULL_DPX_LS;
-
-	if (phydev->duplex == DUPLEX_FULL)
-		val |= dpx;
-	else
-		val &= ~dpx;
+		val = u32_replace_bits(val,
+				       phydev->duplex == DUPLEX_FULL ? 1 : 0,
+				       ENETC_PM_IFM_FULL_DPX_LS);
 
 	if (val == old_val)
 		return;
@@ -453,19 +488,23 @@ static void enetc_setup_mac_iface(struct udevice *dev,
 /* set up serdes for SXGMII */
 static int enetc_init_sxgmii(struct udevice *dev)
 {
-	struct enetc_priv *priv = dev_get_priv(dev);
-
 	if (!enetc_has_imdio(dev))
 		return 0;
 
-	/* Dev ability - SXGMII */
-	enetc_mdio_write(&priv->imdio, ENETC_PCS_PHY_ADDR, ENETC_PCS_DEVAD_REPL,
-			 ENETC_PCS_DEV_ABILITY, ENETC_PCS_DEV_ABILITY_SXGMII);
+	if (enetc_is_imx95(dev)) {
+		xpcs_phy_usxgmii_pma_config(dev);
+	} else {
+		struct enetc_priv *priv = dev_get_priv(dev);
 
-	/* Restart PCS AN */
-	enetc_mdio_write(&priv->imdio, ENETC_PCS_PHY_ADDR, ENETC_PCS_DEVAD_REPL,
-			 ENETC_PCS_CR,
-			 ENETC_PCS_CR_RST | ENETC_PCS_CR_RESET_AN);
+		/* Dev ability - SXGMII */
+		enetc_mdio_write(&priv->imdio, ENETC_PCS_PHY_ADDR, ENETC_PCS_DEVAD_REPL,
+				 ENETC_PCS_DEV_ABILITY, ENETC_PCS_DEV_ABILITY_SXGMII);
+
+		/* Restart PCS AN */
+		enetc_mdio_write(&priv->imdio, ENETC_PCS_PHY_ADDR, ENETC_PCS_DEVAD_REPL,
+				 ENETC_PCS_CR,
+				 ENETC_PCS_CR_RST | ENETC_PCS_CR_RESET_AN);
+	}
 
 	return 0;
 }
@@ -473,13 +512,15 @@ static int enetc_init_sxgmii(struct udevice *dev)
 /* Apply protocol specific configuration to MAC, serdes as needed */
 static void enetc_start_pcs(struct udevice *dev)
 {
+	struct enetc_data *data = (struct enetc_data *)dev_get_driver_data(dev);
 	struct enetc_priv *priv = dev_get_priv(dev);
 
 	/* register internal MDIO for debug purposes */
 	if (enetc_read_pcapr_mdio(dev)) {
 		priv->imdio.read = enetc_mdio_read;
 		priv->imdio.write = enetc_mdio_write;
-		priv->imdio.priv = priv->port_regs + ENETC_PM_IMDIO_BASE;
+		priv->imdio.priv = priv->port_regs + data->reg_offset_mac +
+		                   ENETC_PM_IMDIO_BASE;
 		strlcpy(priv->imdio.name, dev->name, MDIO_NAME_LEN);
 		if (!miiphy_get_dev_by_name(priv->imdio.name))
 			mdio_register(&priv->imdio);
@@ -520,6 +561,10 @@ static int enetc_config_phy(struct udevice *dev)
 		return -ENODEV;
 
 	supported = PHY_GBIT_FEATURES | SUPPORTED_2500baseX_Full;
+
+	if (enetc_is_imx95(dev))
+		supported |= PHY_10G_FEATURES;
+
 	priv->phy->supported &= supported;
 	priv->phy->advertising &= supported;
 
@@ -534,10 +579,29 @@ static int enetc_probe(struct udevice *dev)
 {
 	struct enetc_priv *priv = dev_get_priv(dev);
 	int res;
+	struct udevice *supply = NULL;
 
 	if (ofnode_valid(dev_ofnode(dev)) && !ofnode_is_enabled(dev_ofnode(dev))) {
 		enetc_dbg(dev, "interface disabled\n");
 		return -ENODEV;
+	}
+
+	if (CONFIG_IS_ENABLED(DM_REGULATOR)) {
+		res = device_get_supply_regulator(dev, "serdes-supply",
+						  &supply);
+		if (res  && res  != -ENOENT) {
+			printf("%s: device_get_supply_regulator failed: %d\n",
+			       __func__, res);
+			return res;
+		}
+
+		if (supply) {
+			res = regulator_set_enable_if_allowed(supply, true);
+			if (res) {
+				printf("%s: Error enabling phy supply\n", dev->name);
+				return res;
+			}
+		}
 	}
 
 	priv->enetc_txbd = memalign(ENETC_BD_ALIGN,

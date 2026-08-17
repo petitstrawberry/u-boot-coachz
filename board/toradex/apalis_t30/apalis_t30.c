@@ -11,7 +11,6 @@
 #include <asm/arch/pinmux.h>
 #include <asm/arch-tegra/ap.h>
 #include <asm/arch-tegra/tegra.h>
-#include <asm/global_data.h>
 #include <asm/gpio.h>
 #include <asm/io.h>
 #include <dm.h>
@@ -23,8 +22,6 @@
 
 #include "pinmux-config-apalis_t30.h"
 
-DECLARE_GLOBAL_DATA_PTR;
-
 #define PMU_I2C_ADDRESS		0x2D
 #define MAX_I2C_RETRY		3
 
@@ -35,7 +32,7 @@ DECLARE_GLOBAL_DATA_PTR;
 static int pci_reset_status;
 #endif /* CONFIG_APALIS_T30_PCIE_EVALBOARD_INIT */
 
-int arch_misc_init(void)
+int misc_init_r(void)
 {
 	if (readl(NV_PA_BASE_SRAM + NVBOOTINFOTABLE_BOOTTYPE) ==
 	    NVBOOTTYPE_RECOVERY)

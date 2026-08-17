@@ -9,7 +9,6 @@
 #include <malloc.h>
 #include <fdtdec.h>
 #include <nand.h>
-#include <asm/global_data.h>
 #include <dm/device_compat.h>
 #include <dm/devres.h>
 #include <linux/bitops.h>
@@ -29,8 +28,6 @@
 #include <dm/read.h>
 
 #include "pxa3xx_nand.h"
-
-DECLARE_GLOBAL_DATA_PTR;
 
 #define TIMEOUT_DRAIN_FIFO	5	/* in ms */
 #define	CHIP_DELAY_TIMEOUT	200
@@ -187,6 +184,7 @@ struct pxa3xx_nand_host {
 struct pxa3xx_nand_info {
 	struct nand_hw_control	controller;
 	struct pxa3xx_nand_platform_data *pdata;
+	struct udevice *dev;
 
 	struct clk		*clk;
 	void __iomem		*mmio_base;
@@ -588,8 +586,7 @@ static void drain_fifo(struct pxa3xx_nand_info *info, void *data, int len)
 			ts = get_timer(0);
 			while (!(nand_readl(info, NDSR) & NDSR_RDDREQ)) {
 				if (get_timer(ts) > TIMEOUT_DRAIN_FIFO) {
-					dev_err(info->controller.active->mtd.dev,
-						"Timeout on RDDREQ while draining the FIFO\n");
+					dev_err(info->dev, "Timeout on RDDREQ while draining the FIFO\n");
 					return;
 				}
 			}
@@ -641,8 +638,7 @@ static void handle_data_pio(struct pxa3xx_nand_info *info)
 				   DIV_ROUND_UP(info->step_spare_size, 4));
 		break;
 	default:
-		dev_err(info->controller.active->mtd.dev,
-			"%s: invalid state %d\n", __func__, info->state);
+		dev_err(info->dev, "%s: invalid state %d\n", __func__, info->state);
 		BUG();
 	}
 
@@ -1560,8 +1556,7 @@ static int pxa_ecc_init(struct pxa3xx_nand_info *info,
 		ecc->size = 512;
 
 	if (ecc_stepsize != 512 || !(nfc_layouts[i].strength)) {
-		dev_err(info->controller.active->mtd.dev,
-			"ECC strength %d at page size %d is not supported\n",
+		dev_err(info->dev, "ECC strength %d at page size %d is not supported\n",
 			strength, page_size);
 		return -ENODEV;
 	}
@@ -1765,6 +1760,7 @@ static int pxa3xx_nand_probe_dt(struct udevice *dev, struct pxa3xx_nand_info *in
 	pdata->num_cs = dev_read_u32_default(dev, "num-cs", 1);
 	if (pdata->num_cs != 1) {
 		pr_err("pxa3xx driver supports single CS only\n");
+		kfree(pdata);
 		return -EINVAL;
 	}
 
@@ -1801,6 +1797,7 @@ static int pxa3xx_nand_probe(struct udevice *dev)
 	if (ret)
 		return ret;
 
+	info->dev = dev;
 	pdata = info->pdata;
 
 	ret = alloc_nand_resource(dev, info);

@@ -13,7 +13,6 @@
 #include <reset.h>
 #include <syscon.h>
 #include <asm/arch-rockchip/clock.h>
-#include <asm/global_data.h>
 #include <asm/io.h>
 #include <asm-generic/gpio.h>
 #include <dm/device_compat.h>
@@ -23,8 +22,6 @@
 #include <power/regulator.h>
 
 #include "pcie_dw_common.h"
-
-DECLARE_GLOBAL_DATA_PTR;
 
 /**
  * struct rk_pcie - RK DW PCIe controller state
@@ -158,8 +155,6 @@ static inline void rk_pcie_writel_apb(struct rk_pcie *rk_pcie, u32 reg,
  */
 static void rk_pcie_configure(struct rk_pcie *pci)
 {
-	u32 val;
-
 	dw_pcie_dbi_write_enable(&pci->dw, true);
 
 	/* Disable BAR 0 and BAR 1 */
@@ -175,43 +170,8 @@ static void rk_pcie_configure(struct rk_pcie *pci)
 			TARGET_LINK_SPEED_MASK, pci->gen);
 
 	/* Set the number of lanes */
-	val = readl(pci->dw.dbi_base + PCIE_PORT_LINK_CONTROL);
-	val &= ~PORT_LINK_FAST_LINK_MODE;
-	val |= PORT_LINK_DLL_LINK_EN;
-	val &= ~PORT_LINK_MODE_MASK;
-	switch (pci->num_lanes) {
-	case 1:
-		val |= PORT_LINK_MODE_1_LANES;
-		break;
-	case 2:
-		val |= PORT_LINK_MODE_2_LANES;
-		break;
-	case 4:
-		val |= PORT_LINK_MODE_4_LANES;
-		break;
-	default:
-		dev_err(pci->dw.dev, "num-lanes %u: invalid value\n", pci->num_lanes);
-		goto out;
-	}
-	writel(val, pci->dw.dbi_base + PCIE_PORT_LINK_CONTROL);
+	dw_pcie_link_set_max_link_width(&pci->dw, pci->num_lanes);
 
-	/* Set link width speed control register */
-	val = readl(pci->dw.dbi_base + PCIE_LINK_WIDTH_SPEED_CONTROL);
-	val &= ~PORT_LOGIC_LINK_WIDTH_MASK;
-	switch (pci->num_lanes) {
-	case 1:
-		val |= PORT_LOGIC_LINK_WIDTH_1_LANES;
-		break;
-	case 2:
-		val |= PORT_LOGIC_LINK_WIDTH_2_LANES;
-		break;
-	case 4:
-		val |= PORT_LOGIC_LINK_WIDTH_4_LANES;
-		break;
-	}
-	writel(val, pci->dw.dbi_base + PCIE_LINK_WIDTH_SPEED_CONTROL);
-
-out:
 	dw_pcie_dbi_write_enable(&pci->dw, false);
 }
 

@@ -3,13 +3,12 @@
  * Copyright 2018 NXP
  */
 
+#include <env.h>
 #include <miiphy.h>
 #include <asm-generic/gpio.h>
 #include <asm/arch/imx8mq_pins.h>
 #include <asm/arch/sys_proto.h>
 #include <asm/arch/clock.h>
-
-DECLARE_GLOBAL_DATA_PTR;
 
 #define UART_PAD_CTRL	(PAD_CTL_DSE6 | PAD_CTL_FSEL1)
 

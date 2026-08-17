@@ -29,6 +29,10 @@ struct {
 	{SCMI_PROTOCOL_ID_SENSOR, "Sensor management"},
 	{SCMI_PROTOCOL_ID_RESET_DOMAIN, "Reset domain management"},
 	{SCMI_PROTOCOL_ID_VOLTAGE_DOMAIN, "Voltage domain management"},
+	{SCMI_PROTOCOL_ID_PINCTRL, "Pin control management"},
+	{SCMI_PROTOCOL_ID_VENDOR_80, "Vendor specific (0x80)"},
+	{SCMI_PROTOCOL_ID_VENDOR_81, "Vendor specific (0x81)"},
+	{SCMI_PROTOCOL_ID_VENDOR_82, "Vendor specific (0x82)"},
 };
 
 /**

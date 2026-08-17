@@ -29,6 +29,26 @@
 #define SW_POR_MCU                             BIT(24)
 #define SW_POR_MAIN                            BIT(25)
 
+const struct k3_speed_grade_map am64_map[] = {
+	{'S', 1000000000},
+	{'K', 800000000},
+	{/* List Terminator */ },
+};
+
+char k3_get_speed_grade(void)
+{
+	u32 efuse_val = readl(CTRLMMR_WKUP_JTAG_DEVICE_ID);
+	u32 efuse_speed = (efuse_val & JTAG_DEV_SPEED_MASK) >>
+			  JTAG_DEV_SPEED_SHIFT;
+
+	return ('A' - 1) + efuse_speed;
+}
+
+const struct k3_speed_grade_map *k3_get_speed_grade_map(void)
+{
+	return am64_map;
+}
+
 static void ctrl_mmr_unlock(void)
 {
 	/* Unlock all PADCFG_MMR1 module registers */
@@ -192,14 +212,14 @@ void board_init_f(ulong dummy)
 
 #if defined(CONFIG_K3_LOAD_SYSFW)
 	/*
-	 * Process pinctrl for serial3 a.k.a. MAIN UART1 module and continue
+	 * Process pinctrl for serial1 a.k.a. MAIN UART1 module and continue
 	 * regardless of the result of pinctrl. Do this without probing the
 	 * device, but instead by searching the device that would request the
 	 * given sequence number if probed. The UART will be used by the system
 	 * firmware (SYSFW) image for various purposes and SYSFW depends on us
 	 * to initialize its pin settings.
 	 */
-	ret = uclass_find_device_by_seq(UCLASS_SERIAL, 3, &dev);
+	ret = uclass_find_device_by_seq(UCLASS_SERIAL, 1, &dev);
 	if (!ret)
 		pinctrl_select_state(dev, "default");
 
@@ -235,6 +255,8 @@ void board_init_f(ulong dummy)
 	if (rst_src == COLD_BOOT || rst_src & (SW_POR_MCU | SW_POR_MAIN)) {
 		printf("Resetting on cold boot to workaround ErrataID:i2331\n");
 		printf("Please resend tiboot3.bin in case of UART/DFU boot\n");
+		/* clear MCU_RST_SRC register before reset */
+		writel(0xFFFFFFFF, CTRLMMR_MCU_RST_SRC);
 		do_reset(NULL, 0, 0, NULL);
 	}
 #endif
@@ -263,13 +285,8 @@ void board_init_f(ulong dummy)
 	if (ret)
 		panic("DRAM init failed: %d\n", ret);
 #endif
-	if (IS_ENABLED(CONFIG_SPL_ETH) && IS_ENABLED(CONFIG_TI_AM65_CPSW_NUSS) &&
-	    spl_boot_device() == BOOT_DEVICE_ETHERNET) {
-		struct udevice *cpswdev;
 
-		if (uclass_get_device_by_driver(UCLASS_MISC, DM_DRIVER_GET(am65_cpsw_nuss), &cpswdev))
-			printf("Failed to probe am65_cpsw_nuss driver\n");
-	}
+	k3_fix_rproc_clock("/a53@0");
 }
 
 u32 spl_mmc_boot_mode(struct mmc *mmc, const u32 boot_device)

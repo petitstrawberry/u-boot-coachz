@@ -10,15 +10,12 @@
 #include <os.h>
 #include <malloc.h>
 #include <sandbox_host.h>
-#include <asm/global_data.h>
 #include <dm/device_compat.h>
 #include <dm/device-internal.h>
 #include <linux/errno.h>
 
-DECLARE_GLOBAL_DATA_PTR;
-
 static unsigned long host_block_read(struct udevice *dev,
-				     unsigned long start, lbaint_t blkcnt,
+				     lbaint_t start, lbaint_t blkcnt,
 				     void *buffer)
 {
 	struct blk_desc *desc = dev_get_uclass_plat(dev);
@@ -26,7 +23,7 @@ static unsigned long host_block_read(struct udevice *dev,
 	struct host_sb_plat *plat = dev_get_plat(host_dev);
 
 	if (os_lseek(plat->fd, start * desc->blksz, OS_SEEK_SET) < 0) {
-		printf("ERROR: Invalid block %lx\n", start);
+		printf("ERROR: Invalid block " LBAF "\n", start);
 		return -1;
 	}
 	ssize_t len = os_read(plat->fd, buffer, blkcnt * desc->blksz);
@@ -37,7 +34,7 @@ static unsigned long host_block_read(struct udevice *dev,
 }
 
 static unsigned long host_block_write(struct udevice *dev,
-				      unsigned long start, lbaint_t blkcnt,
+				      lbaint_t start, lbaint_t blkcnt,
 				      const void *buffer)
 {
 	struct blk_desc *desc = dev_get_uclass_plat(dev);
@@ -45,7 +42,7 @@ static unsigned long host_block_write(struct udevice *dev,
 	struct host_sb_plat *plat = dev_get_plat(host_dev);
 
 	if (os_lseek(plat->fd, start * desc->blksz, OS_SEEK_SET) < 0) {
-		printf("ERROR: Invalid block %lx\n", start);
+		printf("ERROR: Invalid block " LBAF "\n", start);
 		return -1;
 	}
 	ssize_t len = os_write(plat->fd, buffer, blkcnt * desc->blksz);

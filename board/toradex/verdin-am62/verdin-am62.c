@@ -12,22 +12,22 @@
 #include <dm/uclass.h>
 #include <env.h>
 #include <fdt_support.h>
+#include <image.h>
 #include <init.h>
 #include <k3-ddrss.h>
 #include <spl.h>
+#include <linux/sizes.h>
 #include <asm/arch/k3-ddr.h>
 
 #include "../common/tdx-cfg-block.h"
 
 DECLARE_GLOBAL_DATA_PTR;
 
-int board_init(void)
-{
-	return 0;
-}
-
 int dram_init(void)
 {
+	if (!IS_ENABLED(CONFIG_TARGET_VERDIN_AM62_R5) || !IS_ENABLED(CONFIG_SPL_BUILD))
+		return fdtdec_setup_mem_size_base();
+
 	gd->ram_size = get_ram_size((long *)CFG_SYS_SDRAM_BASE, CFG_SYS_SDRAM_SIZE);
 
 	if (gd->ram_size < SZ_512M)
@@ -45,7 +45,7 @@ int dram_init_banksize(void)
 		printf("Error setting up memory banksize. %d\n", ret);
 
 	/* Use the detected RAM size, we only support 1 bank right now. */
-	gd->bd->bi_dram[0].size = gd->ram_size;
+	gd->dram[0].size = gd->ram_size;
 
 	return ret;
 }
@@ -58,12 +58,10 @@ phys_addr_t board_get_usable_ram_top(phys_size_t total_size)
 	return 0x9C000000;
 }
 
-#if defined(CONFIG_SPL_LOAD_FIT)
 int board_fit_config_name_match(const char *name)
 {
-	return 0;
+	return k3_fit_config_match_security_state(name);
 }
-#endif
 
 #if IS_ENABLED(CONFIG_OF_LIBFDT) && IS_ENABLED(CONFIG_OF_BOARD_SETUP)
 int ft_board_setup(void *blob, struct bd_info *bd)
@@ -86,7 +84,8 @@ static void select_dt_from_module_version(void)
 		is_wifi = (tdx_hw_tag.prodid == VERDIN_AM62Q_WIFI_BT_IT) ||
 			  (tdx_hw_tag.prodid == VERDIN_AM62S_512MB_WIFI_BT_IT) ||
 			  (tdx_hw_tag.prodid == VERDIN_AM62D_1G_WIFI_BT_IT) ||
-			  (tdx_hw_tag.prodid == VERDIN_AM62Q_2G_WIFI_BT_IT);
+			  (tdx_hw_tag.prodid == VERDIN_AM62Q_2G_WIFI_BT_IT) ||
+			  (tdx_hw_tag.prodid == VERDIN_AM62D_1G_WIFI_BT_ET);
 	}
 
 	if (is_wifi)
@@ -94,7 +93,7 @@ static void select_dt_from_module_version(void)
 	else
 		strlcpy(&variant[0], "nonwifi", sizeof(variant));
 
-	if (strcmp(variant, env_variant)) {
+	if (!env_variant || strcmp(variant, env_variant)) {
 		printf("Setting variant to %s\n", variant);
 		env_set("variant", variant);
 	}
@@ -106,6 +105,13 @@ int board_late_init(void)
 
 	return 0;
 }
+
+#if IS_ENABLED(CONFIG_XPL_BUILD)
+void spl_perform_board_fixups(struct spl_image_info *spl_image)
+{
+	fixup_memory_node(spl_image);
+}
+#endif
 
 #define CTRLMMR_USB0_PHY_CTRL		0x43004008
 #define CTRLMMR_USB1_PHY_CTRL		0x43004018

@@ -2,18 +2,10 @@
 /* Copyright (C) 2024 Toradex */
 
 #include <init.h>
-#include <asm/global_data.h>
 #include <asm-generic/gpio.h>
 #include <linux/errno.h>
 
 #include "../common/tdx-cfg-block.h"
-
-DECLARE_GLOBAL_DATA_PTR;
-
-int board_init(void)
-{
-	return 0;
-}
 
 int board_phys_sdram_size(phys_size_t *size)
 {

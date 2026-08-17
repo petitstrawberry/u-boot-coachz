@@ -22,11 +22,6 @@
 
 DECLARE_GLOBAL_DATA_PTR;
 
-int board_init(void)
-{
-	return 0;
-}
-
 phys_size_t get_effective_memsize(void)
 {
 	/* Use bank0 only */
@@ -62,7 +57,7 @@ int dram_init_banksize(void)
 {
 	phys_size_t ram_size = gd->ram_size;
 
-	gd->bd->bi_dram[0].start = 0;
+	gd->dram[0].start = 0;
 
 	#if defined(CONFIG_SYS_MEM_TOP_HIDE)
 		ram_size += CONFIG_SYS_MEM_TOP_HIDE;
@@ -74,30 +69,37 @@ int dram_init_banksize(void)
 	case DRAM_1GB_SIZE:
 	case DRAM_2GB_ECC_SIZE:
 	case DRAM_2GB_SIZE:
-		gd->bd->bi_dram[0].size = ram_size;
-		gd->bd->bi_dram[1].start = 0;
-		gd->bd->bi_dram[1].size = 0;
+		gd->dram[0].size = ram_size;
+		gd->dram[1].start = 0;
+		gd->dram[1].size = 0;
 		break;
 	case DRAM_4GB_ECC_SIZE:
-		gd->bd->bi_dram[0].size = DRAM_2GB_SIZE;
-		gd->bd->bi_dram[1].start = DRAM_4GB_SIZE;
-		gd->bd->bi_dram[1].size = DRAM_2GB_SIZE -
+		gd->dram[0].size = DRAM_2GB_SIZE;
+		gd->dram[1].start = DRAM_4GB_SIZE;
+		gd->dram[1].size = DRAM_2GB_SIZE -
 			(DRAM_4GB_SIZE - DRAM_4GB_ECC_SIZE);
 		break;
 	case DRAM_4GB_SIZE:
-		gd->bd->bi_dram[0].size = DRAM_2GB_SIZE;
-		gd->bd->bi_dram[1].start = DRAM_4GB_SIZE;
-		gd->bd->bi_dram[1].size = DRAM_2GB_SIZE;
+		gd->dram[0].size = DRAM_2GB_SIZE;
+		gd->dram[1].start = DRAM_4GB_SIZE;
+		gd->dram[1].size = DRAM_2GB_SIZE;
 		break;
 	default:
-		gd->bd->bi_dram[0].size = DRAM_1GB_SIZE;
-		gd->bd->bi_dram[1].start = 0;
-		gd->bd->bi_dram[1].size = 0;
+		gd->dram[0].size = DRAM_1GB_SIZE;
+		gd->dram[1].start = 0;
+		gd->dram[1].size = 0;
 		break;
 	}
 
 	return 0;
 }
 
-EVENT_SPY_SIMPLE(EVT_LAST_STAGE_INIT, board_set_console);
+static int last_stage_init(void)
+{
+#ifdef CONFIG_SYS_SKIP_UART_INIT
+	return board_set_console();
+#endif
+	return 0;
+}
+EVENT_SPY_SIMPLE(EVT_LAST_STAGE_INIT, last_stage_init);
 

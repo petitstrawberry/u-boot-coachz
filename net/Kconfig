@@ -2,7 +2,44 @@
 # Network configuration
 #
 
+config NO_NET
+	bool "Disable networking"
+	help
+	  Transitional variable. Equivalent to setting NET=n.
+
+menuconfig NET
+	bool "Networking"
+	depends on !NO_NET
+	default y
+
 if NET
+
+choice
+	prompt "Networking stack"
+	default NET_LEGACY
+
+config NET_LEGACY
+	bool "Legacy U-Boot networking stack"
+	select NETDEVICES
+	help
+	  Include networking support with U-Boot's internal implementation of
+	  the TCP/IP protocol stack.
+
+config NET_LWIP
+	bool "Use lwIP for networking stack"
+	select NETDEVICES
+	help
+	  Include networking support based on the lwIP (lightweight IP)
+	  TCP/IP stack (https://nongnu.org/lwip). This is a replacement for
+	  the default U-Boot network stack and applications located in net/
+	  and enabled via CONFIG_NET_LEGACY as well as other pieces of code that
+	  depend on CONFIG_NET_LEGACY (such as cmd/net.c enabled via CONFIG_CMD_NET).
+	  Therefore the two symbols CONFIG_NET_LEGACY and CONFIG_NET_LWIP are mutually
+	  exclusive.
+
+endchoice
+
+if NET_LEGACY
 
 config ARP_TIMEOUT
 	int "Milliseconds before trying ARP again"
@@ -53,31 +90,6 @@ config NET_MAXDEFRAG
 	  used for reassembly, and thus an upper bound for the size of
 	  IP datagrams that can be received.
 
-config SYS_FAULT_ECHO_LINK_DOWN
-	bool "Echo the inverted Ethernet link state to the fault LED"
-	help
-	  Echo the inverted Ethernet link state to the fault LED.  Note, if
-	  this option is active, then CONFIG_SYS_FAULT_MII_ADDR also needs to
-	  be configured.
-
-config TFTP_PORT
-	bool "Set TFTP UDP source/destination ports via the environment"
-	help
-	  If this is defined, the environment variable tftpsrcp is used to
-	  supply the TFTP UDP source port value.  If tftpsrcp isn't defined,
-	  the normal pseudo-random port number generator is used.
-
-	  Also, the environment variable tftpdstp is used to supply the TFTP
-	  UDP destination port value.  If tftpdstp isn't defined, the normal
-	  port 69 is used.
-
-	  The purpose for tftpsrcp is to allow a TFTP server to blindly start
-	  the TFTP transfer using the pre-configured target IP address and UDP
-	  port. This has the effect of "punching through" the (Windows XP)
-	  firewall, allowing the remainder of the TFTP transfer to proceed
-	  normally.  A better solution is to properly configure the firewall,
-	  but sometimes that is not allowed.
-
 config TFTP_WINDOWSIZE
 	int "TFTP window size"
 	default 1
@@ -102,15 +114,15 @@ config SERVERIP_FROM_PROXYDHCP
 	bool "Get serverip value from Proxy DHCP response"
 	help
 	  Allows bootfile config to be fetched from Proxy DHCP server
-		while IP is obtained from main DHCP server.
+	  while IP is obtained from main DHCP server.
 
 config SERVERIP_FROM_PROXYDHCP_DELAY_MS
 	int "# of additional milliseconds to wait for ProxyDHCP response"
 	default 100
 	help
 	  Amount of additional time to wait for ProxyDHCP response after
-		receiving response from main DHCP server. Has no effect if
-		SERVERIP_FROM_PROXYDHCP is false.
+	  receiving response from main DHCP server. Has no effect if
+	  SERVERIP_FROM_PROXYDHCP is false.
 
 config KEEP_SERVERADDR
 	bool "Write the server's MAC address to 'serveraddr'"
@@ -220,11 +232,9 @@ config IPV6
 	  ip6addr, serverip6. If a u-boot command is capable to parse an IPv6
 	  address and find it, it will force using IPv6 in the network stack.
 
-endif   # if NET
+endif   # if NET_LEGACY
 
 source "net/lwip/Kconfig"
-
-if NET || NET_LWIP
 
 config BOOTDEV_ETH
 	bool "Enable bootdev for ethernet"
@@ -244,11 +254,17 @@ config NET_RANDOM_ETHADDR
 	  generated. It will be saved to the appropriate environment variable,
 	  too.
 
+config DNS
+	bool "Enable DNS resolutions"
+	select PROT_DNS_LWIP if NET_LWIP
+	help
+	  Selecting this will allow the network stack to use server names
+	  in addition to IP addresses.
+
 config WGET
 	bool "Enable wget"
-	select PROT_TCP if NET
+	select PROT_TCP if NET_LEGACY
 	select PROT_TCP_LWIP if NET_LWIP
-	select PROT_DNS_LWIP if NET_LWIP
 	help
 	  Selecting this will enable wget, an interface to send HTTP requests
 	  via the network stack.
@@ -263,13 +279,16 @@ config TFTP_BLOCKSIZE
 	  almost-MTU block sizes.
 	  You can also activate CONFIG_IP_DEFRAG to set a larger block.
 
-endif   # if NET || NET_LWIP
-
 config SYS_RX_ETH_BUFFER
-        int "Number of receive packet buffers"
-        default 4
-        help
-          Defines the number of Ethernet receive buffers. On some Ethernet
-          controllers it is recommended to set this value to 8 or even higher,
-          since all buffers can be full shortly after enabling the interface on
-          high Ethernet traffic.
+	int "Number of receive packet buffers"
+	default 8 if FSL_ENETC
+	default 4
+	help
+	  Defines the number of Ethernet receive buffers. On some Ethernet
+	  controllers (e.g. FSL_ENETC) it is recommended to set this value to 8
+	  or even higher, since all buffers can be full shortly after enabling
+	  the interface on high Ethernet traffic.
+
+	  FSL_ENETC requires this value to be a multiple of 8.
+
+endif   # if NET

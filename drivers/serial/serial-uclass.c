@@ -190,8 +190,19 @@ int fetch_baud_from_dtb(void)
 int serial_init(void)
 {
 #if CONFIG_IS_ENABLED(SERIAL_PRESENT)
+	/*
+	 * Skip serial device probe before relocation if debug UART is enabled
+	 * and early DM is skipped. Debug UART will handle console output during
+	 * early boot. Full serial initialization happens in serial_initialize()
+	 * after relocation.
+	 */
+	if ((CONFIG_IS_ENABLED(DEBUG_UART) && CONFIG_IS_ENABLED(SKIP_EARLY_DM)) &&
+	    !(gd->flags & GD_FLG_RELOC))
+		return 0;
+
 	serial_find_console_or_panic();
-	gd->flags |= GD_FLG_SERIAL_READY;
+	if (gd->cur_serial_dev)
+		gd->flags |= GD_FLG_SERIAL_READY;
 
 	if (IS_ENABLED(CONFIG_OF_SERIAL_BAUD)) {
 		int ret = 0;

@@ -16,6 +16,10 @@
 	};
 #endif
 
+	imx8mn-cm7 {
+		compatible = "fsl,imx8mn-cm7";
+	};
+
 	wdt-reboot {
 		compatible = "wdt-reboot";
 		wdt = <&wdog1>;
@@ -100,14 +104,6 @@
 	section {
 		pad-byte = <0x00>;
 
-#ifdef CONFIG_FSPI_CONF_HEADER
-		fspi_conf_block {
-			filename = CONFIG_FSPI_CONF_FILE;
-			type = "blob-ext";
-			offset = <0x400>;
-		};
-#endif
-
 #ifdef CONFIG_IMX_HAB
 		nxp-imx8mcst@0 {
 			filename = "u-boot-spl-mkimage.signed.bin";
@@ -118,7 +114,11 @@
 
 			binman_imx_spl: nxp-imx8mimage {
 				filename = "u-boot-spl-mkimage.bin";
+#ifdef CONFIG_FSPI_CONF_HEADER
+				nxp,boot-from = "fspi";
+#else
 				nxp,boot-from = "sd";
+#endif
 				nxp,rom-version = <2>;
 				nxp,loader-address = <CONFIG_SPL_TEXT_BASE>;
 				args;	/* Needed by mkimage etype superclass */
@@ -136,7 +136,7 @@
 
 					ddr-1d-imem-fw {
 #ifdef CONFIG_IMX8M_LPDDR4
-						filename = "lpddr4_pmu_train_1d_imem.bin";
+						filename = "lpddr4_pmu_train_1d_imem_202006.bin";
 #elif CONFIG_IMX8M_DDR4
 						filename = "ddr4_imem_1d_201810.bin";
 #else
@@ -148,7 +148,7 @@
 
 					ddr-1d-dmem-fw {
 #ifdef CONFIG_IMX8M_LPDDR4
-						filename = "lpddr4_pmu_train_1d_dmem.bin";
+						filename = "lpddr4_pmu_train_1d_dmem_202006.bin";
 #elif CONFIG_IMX8M_DDR4
 						filename = "ddr4_dmem_1d_201810.bin";
 #else
@@ -161,7 +161,7 @@
 #if defined(CONFIG_IMX8M_LPDDR4) || defined(CONFIG_IMX8M_DDR4)
 					ddr-2d-imem-fw {
 #ifdef CONFIG_IMX8M_LPDDR4
-						filename = "lpddr4_pmu_train_2d_imem.bin";
+						filename = "lpddr4_pmu_train_2d_imem_202006.bin";
 #else
 						filename = "ddr4_imem_2d_201810.bin";
 #endif
@@ -171,7 +171,7 @@
 
 					ddr-2d-dmem-fw {
 #ifdef CONFIG_IMX8M_LPDDR4
-						filename = "lpddr4_pmu_train_2d_dmem.bin";
+						filename = "lpddr4_pmu_train_2d_dmem_202006.bin";
 #else
 						filename = "ddr4_dmem_2d_201810.bin";
 #endif
@@ -252,6 +252,7 @@
 
 						tee-os {
 							filename = "tee.bin";
+							optional;
 						};
 					};
 #endif

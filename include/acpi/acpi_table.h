@@ -13,15 +13,29 @@
 #ifndef __ACPI_TABLE_H__
 #define __ACPI_TABLE_H__
 
+#include <version.h>
 #include <dm/acpi.h>
 
 #define RSDP_SIG		"RSD PTR "	/* RSDP pointer signature */
 #define OEM_ID			"U-BOOT"	/* U-Boot */
 #define OEM_TABLE_ID		"U-BOOTBL"	/* U-Boot Table */
-#define ASLC_ID			"INTL"		/* Intel ASL Compiler */
 
-/* TODO(sjg@chromium.org): Figure out how to get compiler revision */
-#define ASL_REVISION	0
+/**
+ * define ACPI_CREATOR_ID - ACPI creator ID
+ *
+ * This is the ACPI assigned vendor ID for the U-Boot project.
+ * It is used in the ACPI tables created by U-Boot.
+ */
+#define ACPI_CREATOR_ID		"UBOO"
+
+/**
+ * define ACPI_CREATOR_REVISION - ACPI creator ID
+ *
+ * This encodes the U-Boot version.
+ * It is used in the ACPI tables created by U-Boot.
+ */
+#define ACPI_CREATOR_REVISION \
+	(U_BOOT_VERSION_NUM << 4 | U_BOOT_VERSION_NUM_PATCH)
 
 #define ACPI_RSDP_REV_ACPI_1_0	0
 #define ACPI_RSDP_REV_ACPI_2_0	2
@@ -660,6 +674,7 @@ struct __packed acpi_dmar {
 #define ACPI_DBG2_ARM_SBSA_GENERIC	0x000E
 #define ACPI_DBG2_ARM_DCC		0x000F
 #define ACPI_DBG2_BCM2835		0x0010
+#define ACPI_DBG2_16550_WITH_GAS	0x0012 /* 16550-compatible UART with GAS */
 
 #define ACPI_DBG2_1394_STANDARD		0x0000
 

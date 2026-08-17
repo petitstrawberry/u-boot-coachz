@@ -35,8 +35,7 @@
 					compression = "none";
 					load = /bits/ 64 <CONFIG_TEXT_BASE>;
 
-					uboot_blob: blob-ext {
-						filename = "u-boot-nodtb.bin";
+					uboot_blob: u-boot-nodtb {
 					};
 				};
 #else
@@ -94,9 +93,7 @@
 
 			configurations {
 
-#ifndef CONFIG_MULTI_DTB_FIT
 				default = "conf-1";
-#endif
 
 #if !defined(CONFIG_OF_BOARD) || defined(CONFIG_MULTI_DTB_FIT)
 				@conf-SEQ {

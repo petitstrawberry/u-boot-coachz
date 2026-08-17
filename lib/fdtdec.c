@@ -35,6 +35,7 @@
 #include <linux/ctype.h>
 #include <linux/lzo.h>
 #include <linux/ioport.h>
+#include <asm/global_data.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -714,6 +715,24 @@ int fdtdec_get_int_array(const void *blob, int node, const char *prop_name,
 	return err;
 }
 
+int fdtdec_get_long_array(const void *blob, int node, const char *prop_name,
+			 u64 *array, int count)
+{
+	const u64 *cell;
+	int err = 0;
+
+	debug("%s: %s\n", __func__, prop_name);
+	cell = get_prop_check_min_len(blob, node, prop_name,
+				      sizeof(u64) * count, &err);
+	if (!err) {
+		int i;
+
+		for (i = 0; i < count; i++)
+			array[i] = fdt64_to_cpu(cell[i]);
+	}
+	return err;
+}
+
 int fdtdec_get_int_array_count(const void *blob, int node,
 			       const char *prop_name, u32 *array, int count)
 {
@@ -1077,19 +1096,23 @@ int fdtdec_setup_mem_size_base(void)
 
 	gd->ram_size = (phys_size_t)(res.end - res.start + 1);
 	gd->ram_base = (unsigned long)res.start;
-	debug("%s: Initial DRAM size %llx\n", __func__,
-	      (unsigned long long)gd->ram_size);
+	debug("%s: Initial DRAM size %pap\n", __func__, &gd->ram_size);
 
 	return 0;
 }
 
-ofnode get_next_memory_node(ofnode mem)
+static ofnode get_next_memory_node(ofnode mem)
 {
 	do {
 		mem = ofnode_by_prop_value(mem, "device_type", "memory", 7);
 	} while (!ofnode_is_enabled(mem));
 
 	return mem;
+}
+
+ofnode fdtdec_get_next_memory_node(ofnode mem)
+{
+	return get_next_memory_node(mem);
 }
 
 int fdtdec_setup_memory_banksize(void)
@@ -1120,14 +1143,14 @@ int fdtdec_setup_memory_banksize(void)
 		if (ret != 0)
 			return -EINVAL;
 
-		gd->bd->bi_dram[bank].start = (phys_addr_t)res.start;
-		gd->bd->bi_dram[bank].size =
+		gd->dram[bank].start = (phys_addr_t)res.start;
+		gd->dram[bank].size =
 			(phys_size_t)(res.end - res.start + 1);
 
-		debug("%s: DRAM Bank #%d: start = 0x%llx, size = 0x%llx\n",
+		debug("%s: DRAM Bank #%d: start = %pap, size = %pap\n",
 		      __func__, bank,
-		      (unsigned long long)gd->bd->bi_dram[bank].start,
-		      (unsigned long long)gd->bd->bi_dram[bank].size);
+		      &gd->dram[bank].start,
+		      &gd->dram[bank].size);
 	}
 
 	return 0;
@@ -1687,28 +1710,134 @@ void fdtdec_setup_embed(void)
 	gd->fdt_src = FDTSRC_EMBED;
 }
 
+static int fdtdec_match_dto_compatible(const void *base, const void *dto)
+{
+	const char *compat_base;
+	const char *compat_dto;
+	int len;
+
+	compat_base = (const char *)fdt_getprop(base, 0, "compatible", &len);
+	if (!compat_base || len <= 0)
+		return -ENOENT;
+
+	compat_dto = (const char *)fdt_getprop(dto, 0, "compatible", &len);
+	if (!compat_dto || len <= 0)
+		return -ENOENT;
+
+	if (strcmp(compat_base, compat_dto))
+		return -EPERM;
+
+	return 0;
+}
+
+static inline int fdtdec_ret_to_errno(int ret)
+{
+	switch (ret) {
+	case -FDT_ERR_NOTFOUND:
+		return -ENOENT;
+	case -FDT_ERR_EXISTS:
+		return -EEXIST;
+	case -FDT_ERR_NOSPACE:
+	case -FDT_ERR_NOPHANDLES:
+		return -ENOSPC;
+	default:
+		return -EINVAL;
+	}
+}
+
+static int fdtdec_apply_dto_blob(void **blob, __maybe_unused int size)
+{
+	int ret;
+
+	ret = fdt_check_header(*blob);
+	if (ret)
+		return fdtdec_ret_to_errno(ret);
+
+	ret = fdtdec_match_dto_compatible(gd->fdt_blob, *blob);
+	if (ret)
+		return ret;
+
+	ret = fdt_overlay_apply_verbose((void *)gd->fdt_blob, *blob);
+	if (ret)
+		return fdtdec_ret_to_errno(ret);
+
+	return 0;
+}
+
+static int fdtdec_apply_bloblist_dtos(void)
+{
+	int ret;
+	struct fdt_header *live_fdt;
+	int blob_size;
+	size_t padded_size, max_size;
+
+	if (!CONFIG_IS_ENABLED(OF_LIBFDT_OVERLAY) ||
+	    !CONFIG_IS_ENABLED(BLOBLIST))
+		return 0;
+
+	/* Get the total space reserved for FDT in blob */
+	live_fdt = bloblist_get_blob(BLOBLISTT_CONTROL_FDT, &blob_size);
+	if (live_fdt != gd->fdt_blob)
+		return -ENOENT;
+
+	ret = fdt_check_full(live_fdt, blob_size);
+	if (ret)
+		return fdtdec_ret_to_errno(ret);
+
+	/* Calculate the allowed padded size */
+	padded_size = fdt_totalsize(live_fdt) + CONFIG_SYS_FDT_PAD;
+	max_size = bloblist_get_total_size() - bloblist_get_size() + blob_size;
+	if (padded_size > max_size)
+		padded_size = max_size;
+
+	/* Resize if the current space is not sufficient */
+	if (blob_size < padded_size) {
+		ret = bloblist_resize(BLOBLISTT_CONTROL_FDT, padded_size);
+		if (ret)
+			return ret;
+
+		blob_size = padded_size;
+		ret = fdt_open_into(live_fdt, live_fdt, padded_size);
+		if (ret)
+			return fdtdec_ret_to_errno(ret);
+	}
+
+	ret = bloblist_apply_blobs(BLOBLISTT_FDT_OVERLAY, fdtdec_apply_dto_blob);
+	if (ret)
+		return ret;
+
+	ret = fdt_check_full(live_fdt, blob_size);
+	if (ret)
+		return fdtdec_ret_to_errno(ret);
+
+	ret = fdt_pack(live_fdt);
+	if (ret)
+		return fdtdec_ret_to_errno(ret);
+
+	/* Shrink the blob to the actual FDT size */
+	return bloblist_resize(BLOBLISTT_CONTROL_FDT, fdt_totalsize(live_fdt));
+}
+
 int fdtdec_setup(void)
 {
 	int ret = -ENOENT;
 
 	/*
-	 * If allowing a bloblist, check that first. There was discussion about
-	 * adding an OF_BLOBLIST Kconfig, but this was rejected.
-	 *
-	 * The necessary test is whether the previous phase passed a bloblist,
-	 * not whether this phase creates one.
+	 * If allowing a bloblist, check that first. The necessary test is
+	 * whether the previous phase passed a bloblist, not whether this phase
+	 * creates one.
 	 */
-	if (CONFIG_IS_ENABLED(BLOBLIST) &&
-	    (xpl_prev_phase() != PHASE_TPL ||
-	     IS_ENABLED(CONFIG_TPL_BLOBLIST))) {
-		ret = bloblist_maybe_init();
-		if (!ret) {
+	if (CONFIG_IS_ENABLED(BLOBLIST) && (xpl_phase() > PHASE_TPL)) {
+		if (bloblist_exists()) {
 			gd->fdt_blob = bloblist_find(BLOBLISTT_CONTROL_FDT, 0);
 			if (gd->fdt_blob) {
 				gd->fdt_src = FDTSRC_BLOBLIST;
 				log_debug("Devicetree is in bloblist at %p\n",
 					  gd->fdt_blob);
-				ret = 0;
+				ret = fdtdec_apply_bloblist_dtos();
+				if (ret)
+					return ret;
+				goto setup_fdt;
 			} else {
 				log_debug("No FDT found in bloblist\n");
 				ret = -ENOENT;
@@ -1752,6 +1881,7 @@ int fdtdec_setup(void)
 		}
 	}
 
+setup_fdt:
 	if (CONFIG_IS_ENABLED(MULTI_DTB_FIT))
 		setup_multi_dtb_fit();
 
@@ -1801,7 +1931,7 @@ int fdtdec_resetup(int *rescan)
 
 int fdtdec_decode_ram_size(const void *blob, const char *area, int board_id,
 			   phys_addr_t *basep, phys_size_t *sizep,
-			   struct bd_info *bd)
+			   gd_t *gd_ptr)
 {
 	int addr_cells, size_cells;
 	const u32 *cell, *end;
@@ -1853,8 +1983,8 @@ int fdtdec_decode_ram_size(const void *blob, const char *area, int board_id,
 	}
 	/* Note: if no matching subnode was found we use the parent node */
 
-	if (bd) {
-		memset(bd->bi_dram, '\0', sizeof(bd->bi_dram[0]) *
+	if (gd_ptr) {
+		memset(gd_ptr->dram, '\0', sizeof(gd_ptr->dram[0]) *
 						CONFIG_NR_DRAM_BANKS);
 	}
 
@@ -1870,8 +2000,8 @@ int fdtdec_decode_ram_size(const void *blob, const char *area, int board_id,
 		if (addr_cells == 2)
 			addr += (u64)fdt32_to_cpu(*cell++) << 32UL;
 		addr += fdt32_to_cpu(*cell++);
-		if (bd)
-			bd->bi_dram[bank].start = addr;
+		if (gd_ptr)
+			gd_ptr->dram[bank].start = addr;
 		if (basep && !bank)
 			*basep = (phys_addr_t)addr;
 
@@ -1893,8 +2023,8 @@ int fdtdec_decode_ram_size(const void *blob, const char *area, int board_id,
 			}
 		}
 
-		if (bd)
-			bd->bi_dram[bank].size = size;
+		if (gd_ptr)
+			gd_ptr->dram[bank].size = size;
 		total_size += size;
 	}
 

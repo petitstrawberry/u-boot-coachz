@@ -11,8 +11,11 @@ choice
 config TARGET_ANDES_AE350
 	bool "Support Andes ae350"
 
-config TARGET_BANANAPI_F3
-	bool "Support BananaPi F3 Board"
+config TARGET_ANDES_VOYAGER
+	bool "Support Andes Voyager Board"
+
+config TARGET_BEAGLEBOARD_BEAGLEVFIRE
+	bool "Support BeagleBoard BeagleV-Fire Board (based on Microchip MPFS)"
 
 config TARGET_K230_CANMV
 	bool "Support K230 CanMV Board"
@@ -20,11 +23,14 @@ config TARGET_K230_CANMV
 config TARGET_LICHEERV_NANO
 	bool "Support LicheeRV Nano Board"
 
-config TARGET_MICROCHIP_ICICLE
-	bool "Support Microchip PolarFire-SoC Icicle Board"
+config TARGET_MICROCHIP_GENERIC
+	bool "Support Microchip PolarFire-SoC Boards"
 
 config TARGET_MILKV_DUO
 	bool "Support Milk-v Duo Board"
+
+config TARGET_MILKV_DUO_256M
+	bool "Support Milk-V Duo 256M Board"
 
 config TARGET_OPENPITON_RISCV64
 	bool "Support RISC-V cores on OpenPiton SoC"
@@ -43,6 +49,9 @@ config TARGET_SIFIVE_UNMATCHED
 config TARGET_SIPEED_MAIX
 	bool "Support Sipeed Maix Board"
 	select SYS_CACHE_SHIFT_6
+
+config TARGET_SPACEMIT_K1
+	bool "Support Spacemit K1 SoC"
 
 config TARGET_STARFIVE_VISIONFIVE2
 	bool "Support StarFive VisionFive2 Board"
@@ -77,6 +86,14 @@ config SYS_DCACHE_OFF
 	help
 	  Do not enable data cache in U-Boot.
 
+config SYS_CACHE_THEAD_CMO
+	bool "THEAD non-standard cache operations"
+	depends on !SYS_DCACHE_OFF
+	default n
+	help
+	  Support for non-standard cache management operations on SoCs based on
+	  T-Head C906/C910 cores.
+
 config SPL_SYS_DCACHE_OFF
 	bool "Do not enable dcache in SPL"
 	depends on SPL
@@ -93,17 +110,20 @@ config SPL_ZERO_MEM_BEFORE_USE
 
 # board-specific options below
 source "board/andestech/ae350/Kconfig"
+source "board/andestech/voyager/Kconfig"
 source "board/aspeed/ibex_ast2700/Kconfig"
+source "board/beagle/beaglev_fire/Kconfig"
 source "board/canaan/k230_canmv/Kconfig"
 source "board/emulation/qemu-riscv/Kconfig"
-source "board/microchip/mpfs_icicle/Kconfig"
+source "board/microchip/mpfs_generic/Kconfig"
 source "board/openpiton/riscv64/Kconfig"
 source "board/sifive/unleashed/Kconfig"
 source "board/sifive/unmatched/Kconfig"
 source "board/sipeed/maix/Kconfig"
 source "board/sophgo/milkv_duo/Kconfig"
+source "board/sophgo/milkv_duo_256m/Kconfig"
 source "board/sophgo/licheerv_nano/Kconfig"
-source "board/spacemit/bananapi-f3/Kconfig"
+source "board/spacemit/k1/Kconfig"
 source "board/starfive/visionfive2/Kconfig"
 source "board/thead/th1520_lpi4a/Kconfig"
 source "board/xilinx/mbv/Kconfig"
@@ -114,10 +134,12 @@ source "arch/riscv/cpu/cv1800b/Kconfig"
 source "arch/riscv/cpu/fu540/Kconfig"
 source "arch/riscv/cpu/fu740/Kconfig"
 source "arch/riscv/cpu/ast2700/Kconfig"
+source "arch/riscv/cpu/mpfs/Kconfig"
 source "arch/riscv/cpu/generic/Kconfig"
 source "arch/riscv/cpu/jh7110/Kconfig"
 source "arch/riscv/cpu/k1/Kconfig"
 source "arch/riscv/cpu/k230/Kconfig"
+source "arch/riscv/cpu/th1520/Kconfig"
 
 # architecture-specific options below
 
@@ -330,9 +352,26 @@ endmenu
 
 config RISCV_ISA_A
 	bool "Standard extension for Atomic Instructions"
+	depends on RISCV_ISA_ZAAMO && RISCV_ISA_ZALRSC
 	default y
 	help
 	  Adds "A" to the ISA string passed to the compiler.
+
+config RISCV_ISA_ZAAMO
+	bool "Standard extension for Atomic Memory Operations"
+	default y
+	help
+	  Indicates the platform supports Zaamo extension for atomic memory
+	  operations. Hand-written Assembly routines won't use AMO
+	  instructions if set to n.
+
+config RISCV_ISA_ZALRSC
+	bool "Standard extension for LR/SC instructions"
+	default y
+	help
+	  Indicates the platform supports Zalrsc extension for load-reserved
+	  and store-conditional isntructions. Hand-written assembly routines
+	  won't use LR/SC instructions if set to n.
 
 config RISCV_ISA_ZICBOM
 	bool "Zicbom support"
@@ -343,7 +382,7 @@ config DMA_ADDR_T_64BIT
 	default y if 64BIT
 
 config RISCV_ACLINT
-	bool
+	bool "RISC-V ACLINT support"
 	depends on RISCV_MMODE
 	select REGMAP
 	select SYSCON
@@ -352,7 +391,7 @@ config RISCV_ACLINT
 	  associated with software and timer interrupts.
 
 config SPL_RISCV_ACLINT
-	bool
+	bool "RISC-V ACLINT support in SPL"
 	depends on SPL_RISCV_MMODE
 	select SPL_REGMAP
 	select SPL_SYSCON

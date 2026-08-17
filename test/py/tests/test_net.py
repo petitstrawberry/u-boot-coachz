@@ -4,12 +4,6 @@
 # Test various network-related functionality, such as the dhcp, ping, and
 # tftpboot commands.
 
-import pytest
-import utils
-import uuid
-import datetime
-import re
-
 """
 Note: This test relies on boardenv_* containing configuration values to define
 which network environment is available for testing. Without this, this test
@@ -17,76 +11,99 @@ will be automatically skipped.
 
 For example:
 
-# Boolean indicating whether the Ethernet device is attached to USB, and hence
-# USB enumeration needs to be performed prior to network tests.
-# This variable may be omitted if its value is False.
-env__net_uses_usb = False
+.. code-block:: python
 
-# Boolean indicating whether the Ethernet device is attached to PCI, and hence
-# PCI enumeration needs to be performed prior to network tests.
-# This variable may be omitted if its value is False.
-env__net_uses_pci = True
+    # Boolean indicating whether the Ethernet device is attached to USB, and hence
+    # USB enumeration needs to be performed prior to network tests.
+    # This variable may be omitted if its value is False.
+    env__net_uses_usb = False
 
-# True if a DHCP server is attached to the network, and should be tested.
-# If DHCP testing is not possible or desired, this variable may be omitted or
-# set to False.
-env__net_dhcp_server = True
+    # Boolean indicating whether the Ethernet device is attached to PCI, and hence
+    # PCI enumeration needs to be performed prior to network tests.
+    # This variable may be omitted if its value is False.
+    env__net_uses_pci = True
 
-# False or omitted if a DHCP server is attached to the network, and dhcp abort
-# case should be tested.
-# If DHCP abort testing is not possible or desired, set this variable to True.
-# For example: On some setup, dhcp is too fast and this case may not work.
-env__dhcp_abort_test_skip = True
+    # True if a DHCP server is attached to the network, and should be tested.
+    # If DHCP testing is not possible or desired, this variable may be omitted or
+    # set to False.
+    env__net_dhcp_server = True
 
-# True if a DHCPv6 server is attached to the network, and should be tested.
-# If DHCPv6 testing is not possible or desired, this variable may be omitted or
-# set to False.
-env__net_dhcp6_server = True
+    # False or omitted if a DHCP server is attached to the network, and dhcp abort
+    # case should be tested.
+    # If DHCP abort testing is not possible or desired, set this variable to True.
+    # For example: On some setup, dhcp is too fast and this case may not work.
+    env__dhcp_abort_test_skip = True
 
-# A list of environment variables that should be set in order to configure a
-# static IP. If solely relying on DHCP, this variable may be omitted or set to
-# an empty list.
-env__net_static_env_vars = [
-    ('ipaddr', '10.0.0.100'),
-    ('netmask', '255.255.255.0'),
-    ('serverip', '10.0.0.1'),
-]
+    # True if a DHCPv6 server is attached to the network, and should be tested.
+    # If DHCPv6 testing is not possible or desired, this variable may be omitted or
+    # set to False.
+    env__net_dhcp6_server = True
 
-# Details regarding a file that may be read from a TFTP server. This variable
-# may be omitted or set to None if TFTP testing is not possible or desired.
-env__net_tftp_readable_file = {
-    'fn': 'ubtest-readable.bin',
-    'addr': 0x10000000,
-    'size': 5058624,
-    'crc32': 'c2244b26',
-    'timeout': 50000,
-    'fnu': 'ubtest-upload.bin',
-}
+    # A list of environment variables that should be set in order to configure a
+    # static IP. If solely relying on DHCP, this variable may be omitted or set to
+    # an empty list.
+    env__net_static_env_vars = [
+        ('ipaddr', '10.0.0.100'),
+        ('netmask', '255.255.255.0'),
+        ('serverip', '10.0.0.1'),
+    ]
 
-# Details regarding a file that may be read from a NFS server. This variable
-# may be omitted or set to None if NFS testing is not possible or desired.
-env__net_nfs_readable_file = {
-    'fn': 'ubtest-readable.bin',
-    'addr': 0x10000000,
-    'size': 5058624,
-    'crc32': 'c2244b26',
-}
+    # Details regarding a file that may be read from a TFTP server. This variable
+    # may be omitted or set to None if TFTP testing is not possible or desired.
+    env__net_tftp_readable_file = {
+        'fn': 'ubtest-readable.bin',
+        'addr': 0x10000000,
+        'size': 5058624,
+        'crc32': 'c2244b26',
+        'timeout': 50000,
+        'fnu': 'ubtest-upload.bin',
+    }
 
-# Details regarding a file that may be read from a TFTP server. This variable
-# may be omitted or set to None if PXE testing is not possible or desired.
-env__net_pxe_readable_file = {
-    'fn': 'default',
-    'addr': 0x2000000,
-    'size': 74,
-    'timeout': 50000,
-    'pattern': 'Linux',
-}
+    # Details regarding a file that may be written to U-Boot using the tftpsrv
+    # command. This variable may be omitted or set to None if tftpsrv testing
+    # is not possible or desired. The test uses host-side curl TFTP support to
+    # upload a generated file to U-Boot. The optional tftpsrv_url entry may be
+    # used when the host must use a forwarded address instead of U-Boot's
+    # ipaddr value.
+    env__net_tftpsrv_file = {
+        'fn': 'ubtest-tftpsrv.bin',
+        'addr': 0x10000000,
+        'size': 4096,
+        'timeout': 50000,
+    }
 
-# True if a router advertisement service is connected to the network, and should
-# be tested. If router advertisement testing is not possible or desired, this
-variable may be omitted or set to False.
-env__router_on_net = True
+    # Details regarding a file that may be read from a NFS server. This variable
+    # may be omitted or set to None if NFS testing is not possible or desired.
+    env__net_nfs_readable_file = {
+        'fn': 'ubtest-readable.bin',
+        'addr': 0x10000000,
+        'size': 5058624,
+        'crc32': 'c2244b26',
+    }
+
+    # Details regarding a file that may be read from a TFTP server. This variable
+    # may be omitted or set to None if PXE testing is not possible or desired.
+    env__net_pxe_readable_file = {
+        'fn': 'default',
+        'addr': 0x2000000,
+        'size': 74,
+        'timeout': 50000,
+        'pattern': 'Linux',
+    }
+
+    # True if a router advertisement service is connected to the network, and should
+    # be tested. If router advertisement testing is not possible or desired, this
+    variable may be omitted or set to False.
+    env__router_on_net = True
 """
+
+import pytest
+import utils
+import uuid
+import datetime
+import re
+import tempfile
+import zlib
 
 net_set_up = False
 net6_set_up = False
@@ -458,3 +475,82 @@ def test_net_tftpput(ubman):
 
     output = ubman.run_command("crc32 $fileaddr $filesize")
     assert expected_tftpb_crc in output
+
+
+@pytest.mark.buildconfigspec("cmd_crc32")
+@pytest.mark.buildconfigspec("cmd_tftpsrv")
+@pytest.mark.requiredtool("curl")
+def test_net_tftpsrv(ubman):
+    """Test the tftpsrv command.
+
+    A file is generated on the host, uploaded to U-Boot using TFTP and then
+    validated in U-Boot using its size and CRC32.
+
+    The details of the file to upload are provided by the boardenv_* file;
+    see the comment at the beginning of this file.
+    """
+
+    if not net_set_up:
+        pytest.skip("Network not initialized")
+
+    f = ubman.config.env.get("env__net_tftpsrv_file", None)
+    if not f:
+        pytest.skip("No tftpsrv file to write")
+
+    curl_version = utils.run_and_log(ubman, ["curl", "--version"])
+    if "tftp" not in curl_version.split():
+        pytest.skip("curl does not support TFTP")
+
+    addr = f.get("addr", None)
+    if not addr:
+        addr = utils.find_ram_base(ubman)
+
+    timeout = f.get("timeout", ubman.p.timeout)
+    timeout_secs = max(1, (timeout + 999) // 1000)
+    size = f.get("size", 4096)
+    fn = f.get("fn", "ubtest-tftpsrv.bin")
+    url = f.get("tftpsrv_url", None)
+    data = bytes([i % 251 for i in range(size)])
+    crc = "%08x" % (zlib.crc32(data) & 0xffffffff)
+
+    ip = ubman.run_command("echo $ipaddr").strip()
+    if not ip:
+        pytest.skip("No U-Boot IP address")
+    if not url:
+        url = "tftp://%s/%s" % (ip, fn)
+
+    with tempfile.NamedTemporaryFile() as tmp:
+        tmp.write(data)
+        tmp.flush()
+
+        done = False
+        with ubman.temporary_timeout(timeout):
+            try:
+                ubman.run_command("tftpsrv %x" % addr,
+                                  wait_for_prompt=False)
+                ubman.wait_for("Listening for TFTP transfer")
+                utils.run_and_log(
+                    ubman,
+                    [
+                        "curl",
+                        "--fail",
+                        "--max-time",
+                        str(timeout_secs),
+                        "--upload-file",
+                        tmp.name,
+                        url,
+                    ],
+                )
+                ubman.wait_for("Bytes transferred = %d" % size)
+                ubman.wait_for(ubman.prompt)
+                done = True
+            finally:
+                if not done:
+                    ubman.ctrlc()
+                    ubman.drain_console()
+
+    output = ubman.run_command("echo $filesize")
+    assert "%x" % size in output
+
+    output = ubman.run_command("crc32 $fileaddr $filesize")
+    assert crc in output

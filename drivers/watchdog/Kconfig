@@ -15,6 +15,8 @@ config WATCHDOG_AUTOSTART
 	bool "Automatically start watchdog timer"
 	depends on WDT
 	default n if ARCH_SUNXI
+	default n if ARCH_STM32MP
+	default n if ARCH_SNAPDRAGON
 	default y
 	help
 	  Automatically start watchdog timer and start servicing it during
@@ -27,9 +29,10 @@ config WATCHDOG_AUTOSTART
 
 config WATCHDOG_TIMEOUT_MSECS
 	int "Watchdog timeout in msec"
-	default 128000 if ARCH_MX31 || ARCH_MX5 || ARCH_MX6
+	default 128000 if ARCH_MX5 || ARCH_MX6
 	default 128000 if ARCH_MX7 || ARCH_VF610
-	default 30000 if ARCH_SOCFPGA
+	default 30000 if ARCH_SNAPDRAGON
+	default 10000 if ARCH_SOCFPGA
 	default 16000 if ARCH_SUNXI
 	default 5376 if ULP_WATCHDOG
 	default 15000 if ARCH_BCM283X
@@ -42,6 +45,7 @@ config HW_WATCHDOG
 
 config IMX_WATCHDOG
 	bool "Enable Watchdog Timer support for IMX and LSCH2 of NXP"
+	depends on MACH_IMX
 	select HW_WATCHDOG if !WDT
 	help
 	  Select this to enable the IMX and LSCH2 of Layerscape watchdog
@@ -63,6 +67,7 @@ config OMAP_WATCHDOG
 
 config ULP_WATCHDOG
 	bool "i.MX7ULP watchdog"
+	depends on MACH_IMX
 	help
 	  Say Y here to enable i.MX7ULP watchdog driver.
 
@@ -115,8 +120,8 @@ config WDT_ARMADA_37XX
 
 config WDT_ASPEED
 	bool "Aspeed ast2400/ast2500 watchdog timer support"
-	depends on WDT
-	default y if ARCH_ASPEED
+	depends on WDT && ARCH_ASPEED
+	default y
 	help
 	  Select this to enable watchdog timer for Aspeed ast2500/ast2400 devices.
 	  The watchdog timer is stopped when initialized. It performs reset, either
@@ -125,17 +130,17 @@ config WDT_ASPEED
 	  Second Boot.
 
 config WDT_AST2600
-	bool "Aspeed AST2600 watchdog timer support"
-	depends on WDT
-	default y if ASPEED_AST2600
+	bool "Aspeed AST2600/AST2700 watchdog timer support"
+	depends on WDT && (ASPEED_AST2600 || ASPEED_AST2700)
+	default y
 	help
-	  Select this to enable watchdog timer for Aspeed ast2500/ast2400 devices.
+	  Select this to enable watchdog timer for Aspeed ast2600/ast2700 devices.
 	  The watchdog timer is stopped when initialized. It performs reset, either
 	  full SoC reset or CPU or just some peripherals, based on the flags.
 
 config WDT_AT91
 	bool "AT91 watchdog timer support"
-	depends on WDT
+	depends on WDT && ARCH_AT91
 	help
 	  Select this to enable Microchip watchdog timer, which can be found on
 	  some AT91 devices.
@@ -172,7 +177,7 @@ config WDT_CDNS
 
 config WDT_CORTINA
 	bool "Cortina Access CAxxxx watchdog timer support"
-	depends on WDT
+	depends on WDT && TARGET_PRESIDIO_ASIC
 	help
 	  Cortina Access CAxxxx watchdog timer support.
 	  This driver support all CPU ISAs supported by Cortina
@@ -186,7 +191,7 @@ config WDT_DA9063
 
 config WDT_DAVINCI
 	bool "DaVinci watchdog timer support"
-	depends on WDT
+	depends on WDT && (ARCH_DAVINCI || ARCH_KEYSTONE)
 	help
 	  Select this to enable the watchdog timer for DaVinci SoCs such as the
 	  OMAP-L138.
@@ -212,13 +217,14 @@ config SPL_WDT_GPIO
 config WDT_MAX6370
 	bool "MAX6370 watchdog timer support"
 	depends on WDT
+	select GPIO
 	select DM_GPIO
 	help
 	  Select this to enable max6370 watchdog timer.
 
 config WDT_MCF
 	bool "ColdFire family watchdog timer support"
-	depends on WDT
+	depends on WDT && M68K
 	help
 	  Select this to enable ColdFire watchdog timer,
 	  which supports mcf52x2 mcf532x mcf523x families.
@@ -302,7 +308,7 @@ config WDT_OMAP3
 
 config WDT_ORION
 	bool "Orion watchdog timer support"
-	depends on WDT
+	depends on WDT && ARCH_MVEBU
 	select CLK
 	help
 	  Select this to enable Orion watchdog timer, which can be found on some
@@ -335,6 +341,29 @@ config WDT_K3_RTI_FW_FILE
 
 endif
 
+config WDT_QCOM
+	bool "Qualcomm watchdog timer support"
+	depends on WDT && ARCH_SNAPDRAGON
+	imply WATCHDOG
+	help
+	  Select this to enable Qualcomm watchdog timer, which can be found on
+	  some Qualcomm chips.
+
+config WDT_RENESAS
+	bool "Renesas watchdog timer support"
+	depends on WDT && R8A779F0
+	select CLK
+	select CLK_RENESAS
+	help
+	  Enables Renesas SoC R8A779F0 watchdog timer support.
+
+config WDT_RENESAS_WWDT
+	bool "Renesas window watchdog timer support"
+	depends on WDT
+	select SYSCON
+	help
+	  Enables Renesas window watchdog timer support.
+
 config WDT_SANDBOX
 	bool "Enable Watchdog Timer support for Sandbox"
 	depends on SANDBOX && WDT
@@ -355,10 +384,10 @@ config WDT_SBSA
 	bool "SBSA watchdog timer support"
 	depends on WDT
 	help
-	   Select this to enable SBSA watchdog timer.
-	   This driver can operate ARM SBSA Generic Watchdog as a single stage.
-	   In the single stage mode, when the timeout is reached, your system
-	   will be reset by WS1. The first signal (WS0) is ignored.
+	  Select this to enable SBSA watchdog timer.
+	  This driver can operate ARM SBSA Generic Watchdog as a single stage.
+	  In the single stage mode, when the timeout is reached, your system
+	  will be reset by WS1. The first signal (WS0) is ignored.
 
 config WDT_SIEMENS_PMIC
 	bool "Enable PMIC Watchdog Timer support for Siemens platforms"
@@ -435,6 +464,12 @@ config WDT_TANGIER
 	  This enables support for watchdog controller available on
 	  Intel Tangier SoC. If you're using a board with Intel Tangier
 	  SoC, say Y here.
+
+config WDT_TEGRA
+	bool "Tegra watchdog"
+	depends on WDT && ARCH_TEGRA
+	help
+	  Enable support for the watchdog timer found in Tegra SoCs.
 
 config WDT_ARM_SMC
 	bool "ARM SMC watchdog timer support"

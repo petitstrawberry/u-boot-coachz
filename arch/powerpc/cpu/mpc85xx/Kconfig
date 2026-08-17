@@ -93,7 +93,7 @@ config TARGET_P3041DS
 	select ARCH_P3041
 	select BOARD_LATE_INIT if CHAIN_OF_TRUST
 	select FSL_NGPIXIS
-	imply CMD_SATA
+	imply SATA
 	imply PANIC_HANG
 
 config TARGET_P4080DS
@@ -102,7 +102,7 @@ config TARGET_P4080DS
 	select ARCH_P4080
 	select BOARD_LATE_INIT if CHAIN_OF_TRUST
 	select FSL_NGPIXIS
-	imply CMD_SATA
+	imply SATA
 	imply PANIC_HANG
 
 config TARGET_P5040DS
@@ -112,7 +112,7 @@ config TARGET_P5040DS
 	select BOARD_LATE_INIT if CHAIN_OF_TRUST
 	select FSL_NGPIXIS
 	select SYS_FSL_RAID_ENGINE
-	imply CMD_SATA
+	imply SATA
 	imply PANIC_HANG
 
 config TARGET_MPC8548CDS
@@ -129,7 +129,7 @@ config TARGET_P1010RDB_PA
 	select SUPPORT_TPL
 	select SYS_L2_SIZE_256KB
 	imply CMD_EEPROM
-	imply CMD_SATA
+	imply SATA
 	imply PANIC_HANG
 
 config TARGET_P1010RDB_PB
@@ -140,7 +140,7 @@ config TARGET_P1010RDB_PB
 	select SUPPORT_TPL
 	select SYS_L2_SIZE_256KB
 	imply CMD_EEPROM
-	imply CMD_SATA
+	imply SATA
 	imply PANIC_HANG
 
 config TARGET_P1020RDB_PC
@@ -150,7 +150,7 @@ config TARGET_P1020RDB_PC
 	select ARCH_P1020
 	select SYS_L2_SIZE_256KB
 	imply CMD_EEPROM
-	imply CMD_SATA
+	imply SATA
 	imply PANIC_HANG
 
 config TARGET_P1020RDB_PD
@@ -160,7 +160,7 @@ config TARGET_P1020RDB_PD
 	select ARCH_P1020
 	select SYS_L2_SIZE_256KB
 	imply CMD_EEPROM
-	imply CMD_SATA
+	imply SATA
 	imply PANIC_HANG
 
 config TARGET_P2020RDB
@@ -170,7 +170,7 @@ config TARGET_P2020RDB
 	select ARCH_P2020
 	select SYS_L2_SIZE_512KB
 	imply CMD_EEPROM
-	imply CMD_SATA
+	imply SATA
 	imply SATA_SIL
 
 config TARGET_TURRIS_1X
@@ -190,7 +190,7 @@ config TARGET_P2041RDB
 	select FSL_CORENET
 	select PHYS_64BIT
 	select SYS_L3_SIZE_1024KB
-	imply CMD_SATA
+	imply SATA
 	imply FSL_SATA
 
 config TARGET_QEMU_PPCE500
@@ -229,7 +229,7 @@ config TARGET_T2080QDS
 	select FSL_DDR_FIRST_SLOT_QUAD_CAPABLE
 	select FSL_DDR_INTERACTIVE
 	select SYS_L3_SIZE_512KB
-	imply CMD_SATA
+	imply SATA
 
 config TARGET_T2080RDB
 	bool "Support T2080RDB"
@@ -238,7 +238,7 @@ config TARGET_T2080RDB
 	select SUPPORT_SPL
 	select PHYS_64BIT
 	select SYS_L3_SIZE_512KB
-	imply CMD_SATA
+	imply SATA
 	imply PANIC_HANG
 
 config TARGET_T4240RDB
@@ -248,7 +248,7 @@ config TARGET_T4240RDB
 	select PHYS_64BIT
 	select FSL_DDR_FIRST_SLOT_QUAD_CAPABLE
 	select SYS_L3_SIZE_512KB
-	imply CMD_SATA
+	imply SATA
 	imply PANIC_HANG
 
 config TARGET_KMP204X
@@ -405,7 +405,7 @@ config ARCH_MPC8536
 	select SYS_PPC_E500_USE_DEBUG_TLB
 	select FSL_ELBC
 	imply CMD_NAND
-	imply CMD_SATA
+	imply SATA
 	imply CMD_REGINFO
 
 config ARCH_MPC8540
@@ -482,7 +482,7 @@ config ARCH_P1010
 	imply CMD_EEPROM
 	imply CMD_MTDPARTS
 	imply CMD_NAND
-	imply CMD_SATA
+	imply SATA
 	imply CMD_PCI
 	imply CMD_REGINFO
 	imply FSL_SATA
@@ -521,7 +521,7 @@ config ARCH_P1020
 	select SYS_PPC_E500_USE_DEBUG_TLB
 	select FSL_ELBC
 	imply CMD_NAND
-	imply CMD_SATA
+	imply SATA
 	imply CMD_PCI
 	imply CMD_REGINFO
 	imply SATA_SIL
@@ -543,7 +543,7 @@ config ARCH_P1021
 	select FSL_ELBC
 	imply CMD_REGINFO
 	imply CMD_NAND
-	imply CMD_SATA
+	imply SATA
 	imply CMD_REGINFO
 	imply SATA_SIL
 
@@ -579,7 +579,7 @@ config ARCH_P1024
 	select FSL_ELBC
 	imply CMD_EEPROM
 	imply CMD_NAND
-	imply CMD_SATA
+	imply SATA
 	imply CMD_PCI
 	imply CMD_REGINFO
 	imply SATA_SIL
@@ -599,7 +599,7 @@ config ARCH_P1025
 	select SYS_FSL_SEC_COMPAT_2
 	select SYS_PPC_E500_USE_DEBUG_TLB
 	select FSL_ELBC
-	imply CMD_SATA
+	imply SATA
 	imply CMD_REGINFO
 
 config ARCH_P2020
@@ -687,7 +687,7 @@ config ARCH_P3041
 	select SYS_FSL_USB2_PHY_ENABLE
 	select FSL_ELBC
 	imply CMD_NAND
-	imply CMD_SATA
+	imply SATA
 	imply CMD_REGINFO
 	imply FSL_SATA
 
@@ -730,7 +730,7 @@ config ARCH_P4080
 	select SYS_FSL_SEC_BE
 	select SYS_FSL_SEC_COMPAT_4
 	select FSL_ELBC
-	imply CMD_SATA
+	imply SATA
 	imply CMD_REGINFO
 	imply SATA_SIL
 
@@ -761,7 +761,7 @@ config ARCH_P5040
 	select SYS_FSL_USB2_PHY_ENABLE
 	select SYS_PPC64
 	select FSL_ELBC
-	imply CMD_SATA
+	imply SATA
 	imply CMD_REGINFO
 	imply FSL_SATA
 
@@ -903,7 +903,7 @@ config ARCH_T2080
 	select SYS_PMAN if !NOBQFMAN
 	select SYS_PPC64
 	select FSL_IFC
-	imply CMD_SATA
+	imply SATA
 	imply CMD_NAND
 	imply CMD_REGINFO
 	imply FSL_SATA
@@ -946,7 +946,7 @@ config ARCH_T4240
 	select SYS_PMAN if !NOBQFMAN
 	select SYS_PPC64
 	select FSL_IFC
-	imply CMD_SATA
+	imply SATA
 	imply CMD_NAND
 	imply CMD_REGINFO
 	imply FSL_SATA
@@ -966,14 +966,14 @@ config E500
 	bool
 	default y
 	help
-		Enable PowerPC E500 cores, including e500v1, e500v2, e500mc
+	  Enable PowerPC E500 cores, including e500v1, e500v2, e500mc
 
 config E500MC
 	bool
 	select BTB
 	imply CMD_PCI
 	help
-		Enble PowerPC E500MC core
+	  Enable PowerPC E500MC core
 
 config E5500
 	bool
@@ -982,7 +982,7 @@ config E6500
 	bool
 	select BTB
 	help
-		Enable PowerPC E6500 core
+	  Enable PowerPC E6500 core
 
 config NOBQFMAN
 	bool
@@ -990,7 +990,7 @@ config NOBQFMAN
 config FSL_LAW
 	bool
 	help
-		Use Freescale common code for Local Access Window
+	  Use Freescale common code for Local Access Window
 
 config HETROGENOUS_CLUSTERS
 	bool
@@ -1054,10 +1054,10 @@ config SYS_CCSRBAR_DEFAULT
 				ARCH_T4240
 	default 0xe0000000 if ARCH_QEMU_E500
 	help
-		Default value of CCSRBAR comes from power-on-reset. It
-		is fixed on each SoC. Some SoCs can have different value
-		if changed by pre-boot regime. The value here must match
-		the current value in SoC. If not sure, do not change.
+	  Default value of CCSRBAR comes from power-on-reset. It
+	  is fixed on each SoC. Some SoCs can have different value
+	  if changed by pre-boot regime. The value here must match
+	  the current value in SoC. If not sure, do not change.
 
 config SYS_DPAA_PME
 	bool
@@ -1287,8 +1287,8 @@ config SYS_FSL_NUM_LAWS
 	default 8 if	ARCH_MPC8540	|| \
 			ARCH_MPC8560
 	help
-		Number of local access windows. This is fixed per SoC.
-		If not sure, do not change.
+	  Number of local access windows. This is fixed per SoC.
+	  If not sure, do not change.
 
 config SYS_FSL_CORES_PER_CLUSTER
 	int
@@ -1308,8 +1308,8 @@ config SYS_NUM_TLBCAMS
 	default 64 if E500MC
 	default 16
 	help
-		Number of TLB CAM entries for Book-E chips. 64 for E500MC,
-		16 for other E500 SoCs.
+	  Number of TLB CAM entries for Book-E chips. 64 for E500MC,
+	  16 for other E500 SoCs.
 
 config L2_CACHE
 	bool "Enable L2 cache support"
@@ -1375,7 +1375,7 @@ config SYS_L3_SIZE
 	int
 	default 262144 if SYS_L3_SIZE_256KB
 	default 524288 if SYS_L3_SIZE_512KB
-	default 1048576 if SYS_L3_SIZE_512KB
+	default 1048576 if SYS_L3_SIZE_1024KB
 
 config SYS_PPC64
 	bool
@@ -1401,12 +1401,12 @@ config SYS_PPC_E500_DEBUG_TLB
 			ARCH_BSC9132	|| \
 			ARCH_C29X
 	help
-		Select a temporary TLB entry to be used during boot to work
-                around limitations in e500v1 and e500v2 external debugger
-                support. This reduces the portions of the boot code where
-                breakpoints and single stepping do not work. The value of this
-                symbol should be set to the TLB1 entry to be used for this
-                purpose. If unsure, do not change.
+	  Select a temporary TLB entry to be used during boot to work
+	  around limitations in e500v1 and e500v2 external debugger
+	  support. This reduces the portions of the boot code where
+	  breakpoints and single stepping do not work. The value of this
+	  symbol should be set to the TLB1 entry to be used for this
+	  purpose. If unsure, do not change.
 
 config SYS_FSL_IFC_CLK_DIV
 	int "Divider of platform clock"
@@ -1419,8 +1419,8 @@ config SYS_FSL_IFC_CLK_DIV
 			ARCH_T4240
 	default 1
 	help
-		Defines divider of platform clock(clock input to
-		IFC controller).
+	  Defines divider of platform clock(clock input to
+	  IFC controller).
 
 config SYS_FSL_LBC_CLK_DIV
 	int "Divider of platform clock"
@@ -1435,8 +1435,8 @@ config SYS_FSL_LBC_CLK_DIV
 	default 1
 
 	help
-		Defines divider of platform clock(clock input to
-		eLBC controller).
+	  Defines divider of platform clock(clock input to
+	  eLBC controller).
 
 config ENABLE_36BIT_PHYS
 	bool "Enable 36bit physical address space support"
@@ -1542,15 +1542,15 @@ config FSL_VIA
 
 source "board/CZ.NIC/turris_1x/Kconfig"
 source "board/emulation/qemu-ppce500/Kconfig"
-source "board/freescale/mpc8548cds/Kconfig"
-source "board/freescale/p1010rdb/Kconfig"
-source "board/freescale/p1_p2_rdb_pc/Kconfig"
-source "board/freescale/p2041rdb/Kconfig"
-source "board/freescale/t102xrdb/Kconfig"
-source "board/freescale/t104xrdb/Kconfig"
-source "board/freescale/t208xqds/Kconfig"
-source "board/freescale/t208xrdb/Kconfig"
-source "board/freescale/t4rdb/Kconfig"
+source "board/nxp/mpc8548cds/Kconfig"
+source "board/nxp/p1010rdb/Kconfig"
+source "board/nxp/p1_p2_rdb_pc/Kconfig"
+source "board/nxp/p2041rdb/Kconfig"
+source "board/nxp/t102xrdb/Kconfig"
+source "board/nxp/t104xrdb/Kconfig"
+source "board/nxp/t208xqds/Kconfig"
+source "board/nxp/t208xrdb/Kconfig"
+source "board/nxp/t4rdb/Kconfig"
 source "board/socrates/Kconfig"
 
 endmenu

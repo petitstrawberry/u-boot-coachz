@@ -6,6 +6,7 @@
 
 #include <malloc.h>
 #include <errno.h>
+#include <env.h>
 #include <asm/io.h>
 #include <miiphy.h>
 #include <asm/mach-imx/iomux-v3.h>
@@ -29,13 +30,6 @@
 #include <power/regulator.h>
 #include <usb/xhci.h>
 #include "librem5.h"
-
-DECLARE_GLOBAL_DATA_PTR;
-
-int board_early_init_f(void)
-{
-	return 0;
-}
 
 #if IS_ENABLED(CONFIG_LOAD_ENV_FROM_MMC_BOOT_PARTITION)
 uint board_mmc_get_env_part(struct mmc *mmc)

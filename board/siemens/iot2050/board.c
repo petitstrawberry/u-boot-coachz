@@ -11,6 +11,7 @@
 #include <config.h>
 #include <bootstage.h>
 #include <dm.h>
+#include <env.h>
 #include <fdt_support.h>
 #include <i2c.h>
 #include <led.h>
@@ -231,7 +232,7 @@ void set_board_info_env(void)
 		env_set("seboot_version", buf);
 	env_set("fw_version", PLAIN_VERSION);
 
-	if (IS_ENABLED(CONFIG_NET)) {
+	if (IS_ENABLED(CONFIG_NET_LEGACY)) {
 		int mac_cnt;
 
 		mac_cnt = sysinfo_get_item_count(sysinfo, SYSID_BOARD_MAC_ADDR);
@@ -366,11 +367,6 @@ static void m2_connector_setup(void)
 	m2_overlay_prepare();
 }
 
-int board_init(void)
-{
-	return 0;
-}
-
 int dram_init(void)
 {
 	struct udevice *sysinfo;
@@ -401,20 +397,20 @@ int dram_init_banksize(void)
 
 	if (gd->ram_size > SZ_2G) {
 		/* Bank 0 declares the memory available in the DDR low region */
-		gd->bd->bi_dram[0].start = CFG_SYS_SDRAM_BASE;
-		gd->bd->bi_dram[0].size = SZ_2G;
+		gd->dram[0].start = CFG_SYS_SDRAM_BASE;
+		gd->dram[0].size = SZ_2G;
 
 		/* Bank 1 declares the memory available in the DDR high region */
-		gd->bd->bi_dram[1].start = CFG_SYS_SDRAM_BASE1;
-		gd->bd->bi_dram[1].size = gd->ram_size - SZ_2G;
+		gd->dram[1].start = CFG_SYS_SDRAM_BASE1;
+		gd->dram[1].size = gd->ram_size - SZ_2G;
 	} else {
 		/* Bank 0 declares the memory available in the DDR low region */
-		gd->bd->bi_dram[0].start = CFG_SYS_SDRAM_BASE;
-		gd->bd->bi_dram[0].size = gd->ram_size;
+		gd->dram[0].start = CFG_SYS_SDRAM_BASE;
+		gd->dram[0].size = gd->ram_size;
 
 		/* Bank 1 declares the memory available in the DDR high region */
-		gd->bd->bi_dram[1].start = 0;
-		gd->bd->bi_dram[1].size = 0;
+		gd->dram[1].start = 0;
+		gd->dram[1].size = 0;
 	}
 
 	return 0;

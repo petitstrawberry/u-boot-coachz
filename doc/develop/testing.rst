@@ -22,24 +22,24 @@ the quick ones, type this::
 
     make qcheck
 
-It is also possible to run just the tests for tools (patman, binman, etc.).
+It is also possible to run just the tests for tools (binman, buildman, etc.).
 Such tests are included with those tools, i.e. no actual U-Boot unit tests are
 run. Type this::
 
     make tcheck
 
-You can also run a selection tests in parallel with::
+You can also run a selection of tests in parallel with::
 
     make pcheck
 
 All of the above use the test/run script with a paremeter to select which tests
-are run. See :doc:`py_testing` for more information.
+are run. See :doc:`pytest/usage` for more information.
 
 
 Sandbox
 -------
 U-Boot can be built as a user-space application (e.g. for Linux). This
-allows test to be executed without needing target hardware. The 'sandbox'
+allows tests to be executed without needing target hardware. The 'sandbox'
 target provides this feature and it is widely used in tests.
 
 See :doc:`tests_sandbox` for more information.
@@ -69,7 +69,7 @@ build::
 
    ./test/py/test.py --bd sandbox_spl --build -k test_spl
 
-See :doc:`py_testing` for more information about the pytest suite.
+See :doc:`pytest/usage` for more information about the pytest suite.
 
 See :doc:`tests_sandbox` for how to run tests directly (not through pytest).
 

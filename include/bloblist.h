@@ -73,6 +73,7 @@
 #define __BLOBLIST_H
 
 #include <mapmem.h>
+#include <linux/errno.h>
 
 enum {
 	BLOBLIST_VERSION	= 1,
@@ -110,7 +111,8 @@ enum bloblist_tag_t {
 	BLOBLISTT_ACPI_TABLES = 4,
 	BLOBLISTT_TPM_EVLOG = 5,
 	BLOBLISTT_TPM_CRB_BASE = 6,
-	BLOBLISTT_ACPI_PP = 7,
+	BLOBLISTT_FDT_OVERLAY = 7,
+	BLOBLISTT_ACPI_PP = 8,
 
 	/* Standard area to allocate blobs used across firmware components */
 	BLOBLISTT_AREA_FIRMWARE = 0x10,
@@ -231,6 +233,16 @@ enum {
 	BLOBLIST_REC_HDR_SIZE		= sizeof(struct bloblist_rec),
 };
 
+/*
+ * struct dto_blob_hdr - Blob inline header for BLOBLISTT_FDT_OVERLAY
+ *
+ * @subtype: IMP-DEF per the agreement between the DT overlay producer and
+ *	consumer. Default value is 0.
+ */
+struct dto_blob_hdr {
+	u64 subtype;
+};
+
 /**
  * bloblist_check_magic() - return a bloblist if the magic matches
  *
@@ -265,6 +277,26 @@ void *bloblist_get_blob(uint tag, int *sizep);
 static inline void *bloblist_get_blob(uint tag, int *sizep)
 {
 	return NULL;
+}
+#endif
+
+#if CONFIG_IS_ENABLED(BLOBLIST)
+/**
+ * bloblist_apply_blobs() - Apply the data of blobs by tag
+ *
+ * Scan the bloblist, find the blobs with the matching tag and apply the data
+ * of blobs
+ *
+ * @tag:	Tag to search for (enum bloblist_tag_t)
+ * @func:	Function to apply the data of blobs
+ * Return: 0 if OK, otherwise error.
+ */
+int bloblist_apply_blobs(uint tag, int (*func)(void **data, int size));
+#else
+static inline int bloblist_apply_blobs(uint tag,
+				       int (*func)(void **data, int size))
+{
+	return -EPERM;
 }
 #endif
 
@@ -457,9 +489,23 @@ const char *bloblist_tag_name(enum bloblist_tag_t tag);
 int bloblist_reloc(void *to, uint to_size);
 
 /**
+ * bloblist_exists() - Check for the prior existence of a bloblist
+ *
+ * This will check for a transfer list having been passed via standard
+ * convention. If CONFIG_BLOBLIST_PASSAGE_MANDATORY is selected and one is not
+ * found, we return false.
+ *
+ * If CONFIG_BLOBLIST_FIXED is selected, it uses CONFIG_BLOBLIST_ADDR and
+ * CONFIG_BLOBLIST_SIZE to check for a bloblist.
+ *
+ * Return: true if found, false if not
+ */
+bool bloblist_exists(void);
+
+/**
  * bloblist_init() - Init the bloblist system with a single bloblist
  *
- * This locates and sets up the blocklist for use.
+ * This creates a bloblist for use, if not already found.
  *
  * If CONFIG_BLOBLIST_FIXED is selected, it uses CONFIG_BLOBLIST_ADDR and
  * CONFIG_BLOBLIST_SIZE to set up a bloblist for use by U-Boot.
@@ -470,27 +516,11 @@ int bloblist_reloc(void *to, uint to_size);
  * If CONFIG_BLOBLIST_PASSAGE_MANDATORY is selected, bloblist in the incoming
  * standard passage is mandatorily required.
  *
- * Sets GD_FLG_BLOBLIST_READY in global_data flags on success
+ * Sets GD_FLG_BLOBLIST_HANDOFF in global_data flags on success
  *
  * Return: 0 if OK, -ve on error
  */
 int bloblist_init(void);
-
-#if CONFIG_IS_ENABLED(BLOBLIST)
-/**
- * bloblist_maybe_init() - Init the bloblist system if not already done
- *
- * Calls bloblist_init() if the GD_FLG_BLOBLIST_READY flag is not set
- *
- * Return: 0 if OK, -ve on error
- */
-int bloblist_maybe_init(void);
-#else
-static inline int bloblist_maybe_init(void)
-{
-	return 0;
-}
-#endif /* BLOBLIST */
 
 /**
  * bloblist_check_reg_conv() - Check whether the bloblist is compliant to

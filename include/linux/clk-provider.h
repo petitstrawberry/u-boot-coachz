@@ -15,10 +15,17 @@
 
 struct udevice;
 
+/* update clock ID for the dev = clock provider, compatible with CLK_AUTO_ID */
+static inline void dev_clk_dm(const struct udevice *dev, ulong id, struct clk *clk)
+{
+	if (!IS_ERR(clk))
+		clk->id = CLK_ID(dev, id);
+}
+
 static inline void clk_dm(ulong id, struct clk *clk)
 {
 	if (!IS_ERR(clk))
-		clk->id = id;
+		clk->id = CLK_ID(clk->dev, id);
 }
 
 /*
@@ -219,6 +226,8 @@ struct clk_composite {
 	const struct clk_ops	*mux_ops;
 	const struct clk_ops	*rate_ops;
 	const struct clk_ops	*gate_ops;
+
+	struct udevice *dev;
 };
 
 #define to_clk_composite(_clk) container_of(_clk, struct clk_composite, clk)
@@ -236,6 +245,11 @@ int clk_register(struct clk *clk, const char *drv_name, const char *name,
 struct clk *clk_register_fixed_factor(struct udevice *dev, const char *name,
 		const char *parent_name, unsigned long flags,
 		unsigned int mult, unsigned int div);
+
+struct clk *clk_register_divider_table(struct udevice *dev, const char *name,
+		const char *parent_name, unsigned long flags,
+		void __iomem *reg, u8 shift, u8 width,
+		u8 clk_divider_flags, const struct clk_div_table *table);
 
 struct clk *clk_register_divider(struct udevice *dev, const char *name,
 		const char *parent_name, unsigned long flags,

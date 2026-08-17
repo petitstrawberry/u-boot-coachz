@@ -3,11 +3,10 @@
  * Copyright 2020-2021 Toradex
  */
 
-#include <config.h>
+#include <env.h>
 #include <init.h>
 #include <asm/arch/clock.h>
 #include <asm/arch/sys_proto.h>
-#include <asm/global_data.h>
 #include <asm/io.h>
 #include <hang.h>
 #include <i2c.h>
@@ -16,8 +15,6 @@
 #include <netdev.h>
 
 #include "../common/tdx-cfg-block.h"
-
-DECLARE_GLOBAL_DATA_PTR;
 
 #define I2C_PMIC	0
 
@@ -85,7 +82,9 @@ static void select_dt_from_module_version(void)
 		is_wifi = (tdx_hw_tag.prodid == VERDIN_IMX8MMQ_WIFI_BT_IT) ||
 			  (tdx_hw_tag.prodid == VERDIN_IMX8MMDL_WIFI_BT_IT) ||
 			  (tdx_hw_tag.prodid == VERDIN_IMX8MMQ_WIFI_BT_IT_NO_CAN) ||
-			  (tdx_hw_tag.prodid == VERDIN_IMX8MMQ_4G_WIFI_BT_ET);
+			  (tdx_hw_tag.prodid == VERDIN_IMX8MMQ_4G_WIFI_BT_ET) ||
+			  (tdx_hw_tag.prodid == VERDIN_IMX8MMQ_WB_IT_64G) ||
+			  (tdx_hw_tag.prodid == VERDIN_IMX8MMQ_2G_WIFI_BT_IT_64G);
 	}
 
 	switch (get_pcb_revision()) {
@@ -100,7 +99,7 @@ static void select_dt_from_module_version(void)
 		break;
 	}
 
-	if (strcmp(variant, env_variant)) {
+	if (!env_variant || strcmp(variant, env_variant)) {
 		printf("Setting variant to %s\n", variant);
 		env_set("variant", variant);
 	}

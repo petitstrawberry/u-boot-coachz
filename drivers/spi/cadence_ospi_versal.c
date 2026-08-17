@@ -15,12 +15,11 @@
 #include <zynqmp_firmware.h>
 #include <asm/arch/hardware.h>
 #include "cadence_qspi.h"
-#include <dt-bindings/power/xlnx-versal-power.h>
 
 int cadence_qspi_apb_dma_read(struct cadence_spi_priv *priv,
 			      const struct spi_mem_op *op)
 {
-	u32 reg, ret, rx_rem, n_rx, bytes_to_dma, data;
+	u32 reg, ret, rx_rem, n_rx, bytes_to_dma, data, status;
 	u8 opcode, addr_bytes, *rxbuf, dummy_cycles;
 
 	n_rx = op->data.nbytes;
@@ -36,6 +35,10 @@ int cadence_qspi_apb_dma_read(struct cadence_spi_priv *priv,
 	bytes_to_dma = n_rx - rx_rem;
 
 	if (bytes_to_dma) {
+		if (priv->use_dac_mode)
+			clrbits_le32(priv->regbase + CQSPI_REG_CONFIG,
+				     CQSPI_REG_CONFIG_DIRECT);
+
 		cadence_qspi_apb_enable_linear_mode(false);
 		reg = readl(priv->regbase + CQSPI_REG_CONFIG);
 		reg |= CQSPI_REG_CONFIG_ENBL_DMA;
@@ -87,6 +90,16 @@ int cadence_qspi_apb_dma_read(struct cadence_spi_priv *priv,
 				   CQSPI_REG_SIZE_ADDRESS_MASK;
 
 		opcode = CMD_4BYTE_FAST_READ;
+
+		/* Set up command opcode extension. */
+		status = readl(priv->regbase + CQSPI_REG_CONFIG);
+		if (status & CQSPI_REG_CONFIG_DTR_PROTO) {
+			ret = cadence_qspi_setup_opcode_ext(priv, op,
+							    CQSPI_REG_OP_EXT_STIG_LSB);
+			if (ret)
+				return ret;
+		}
+
 		dummy_cycles = 8;
 		writel((dummy_cycles << CQSPI_REG_RD_INSTR_DUMMY_LSB) | opcode,
 		       priv->regbase + CQSPI_REG_RD_INSTR);
@@ -115,6 +128,9 @@ int cadence_qspi_apb_dma_read(struct cadence_spi_priv *priv,
 		rxbuf -= bytes_to_dma;
 		memcpy(rxbuf, rxbuf + 1, n_rx - 1);
 	}
+
+	if (priv->use_dac_mode)
+		cadence_qspi_apb_dac_mode_enable(priv->regbase);
 
 	return 0;
 }
@@ -168,15 +184,15 @@ int cadence_qspi_flash_reset(struct udevice *dev)
 
 	/* Disable Tri-state */
 	writel((readl(BANK0_TRI) & ~BIT(FLASH_RESET_GPIO)), BANK0_TRI);
-	udelay(1);
+	udelay(5);
 
 	/* Set value 0 to pin */
 	writel((readl(BANK0_OUTPUT) & ~BIT(FLASH_RESET_GPIO)), BANK0_OUTPUT);
-	udelay(10);
+	udelay(150);
 
 	/* Set value 1 to pin */
 	writel((readl(BANK0_OUTPUT) | BIT(FLASH_RESET_GPIO)), BANK0_OUTPUT);
-	udelay(10);
+	udelay(1200);
 
 	return 0;
 }
@@ -189,12 +205,12 @@ void cadence_qspi_apb_enable_linear_mode(bool enable)
 			/* ahb read mode */
 			xilinx_pm_request(PM_IOCTL, PM_DEV_OSPI,
 					  IOCTL_OSPI_MUX_SELECT,
-					  PM_OSPI_MUX_SEL_LINEAR, 0, NULL);
+					  PM_OSPI_MUX_SEL_LINEAR, 0, 0, 0, NULL);
 		else
 			/* DMA mode */
 			xilinx_pm_request(PM_IOCTL, PM_DEV_OSPI,
 					  IOCTL_OSPI_MUX_SELECT,
-					  PM_OSPI_MUX_SEL_DMA, 0, NULL);
+					  PM_OSPI_MUX_SEL_DMA, 0, 0, 0, NULL);
 	} else {
 		if (enable)
 			writel(readl(VERSAL_AXI_MUX_SEL) |

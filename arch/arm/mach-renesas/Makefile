@@ -9,9 +9,15 @@ obj-y += emac.o
 obj-$(CONFIG_DISPLAY_BOARDINFO) += board.o
 obj-$(CONFIG_TMU_TIMER) += ../../sh/lib/time.o
 obj-$(CONFIG_RCAR_GEN2) += lowlevel_init_ca15.o cpu_info-rcar.o
+obj-$(CONFIG_RCAR_GEN3) += cpu_info-rcar.o
+obj-$(CONFIG_RCAR_GEN4) += cpu_info-rcar.o
+obj-$(CONFIG_RCAR_GEN5) += cpu_info-rcar.o
+ifneq ($(CONFIG_ARM64),)
 obj-$(CONFIG_RCAR_64) += lowlevel_init_gen3.o
-obj-$(CONFIG_RCAR_GEN3) += cpu_info-rcar.o memmap-gen3.o
-obj-$(CONFIG_RCAR_GEN4) += cpu_info-rcar.o memmap-gen3.o
+obj-$(CONFIG_RCAR_GEN3) += memmap-gen3.o
+obj-$(CONFIG_RCAR_GEN4) += memmap-gen3.o
+obj-$(CONFIG_RCAR_GEN5) += memmap-gen3.o
+endif
 obj-$(CONFIG_RZ_G2) += cpu_info-rzg.o
 obj-$(CONFIG_RZG2L) += cpu_info-rzg2l.o memmap-rzg2l.o
 
@@ -19,12 +25,12 @@ ifneq ($(CONFIG_RCAR_64),)
 obj-$(CONFIG_ARMV8_PSCI) += psci-rcar64.o
 endif
 
-OBJCOPYFLAGS_u-boot-spl.srec := -O srec
+OBJCOPYFLAGS_u-boot-spl.srec := -I binary -O srec --change-addresses=$(CONFIG_SPL_TEXT_BASE)
 quiet_cmd_objcopy = OBJCOPY $@
 cmd_objcopy = $(OBJCOPY) --gap-fill=0x00 $(OBJCOPYFLAGS) \
 	$(OBJCOPYFLAGS_$(@F)) $< $@
 
-spl/u-boot-spl.srec: spl/u-boot-spl FORCE
+spl/u-boot-spl.srec: spl/u-boot-spl.bin FORCE
 	$(call if_changed,objcopy)
 
 srec_cat_gte_160 := ${shell expr `srec_cat -VERSION | grep ^srec_cat | sed 's/^.* //g' | cut -f1-2 -d.` \>= "1.60"}
@@ -34,6 +40,38 @@ else
 	srec_cat_le_cmd := "-l-e-constant"
 endif
 
+ifneq ($(CONFIG_RCAR_GEN5),)
+quiet_cmd_srec_cat = SRECCAT $@
+      cmd_srec_cat = srec_cat -output $@ -M 8 $< -M 8 \
+			-Output_Block_Size 16 \
+			-generate 0x18402010 0x18402014 $(srec_cat_le_cmd) $(CONFIG_SYS_UBOOT_START) 4 \
+			-generate 0x18402014 0x18402018 $(srec_cat_le_cmd) 0x1ef000 4
+
+quiet_cmd_srec_shdr_cat = SRECCAT $@
+      cmd_srec_shdr_cat = srec_cat -output $@ -M 8 \
+			-Output_Block_Size 16 \
+			-DISable Data_Count \
+			-Execution_Start_Address 0x18400000 \
+			-generate 0x18400000 0x18400004 $(srec_cat_le_cmd) 0x00000003 4 \
+			-generate 0x18400004 0x18400008 $(srec_cat_le_cmd) 0x0 4 \
+			-generate 0x18402000 0x18402004 $(srec_cat_le_cmd) 0x6b657963 4 \
+			-generate 0x18402004 0x18402008 $(srec_cat_le_cmd) 0x00010010 4 \
+			-generate 0x18402008 0x1840200c $(srec_cat_le_cmd) 0x0 4 \
+			-generate 0x1840200c 0x18402010 $(srec_cat_le_cmd) 0x34040000 4 \
+			-generate 0x18402010 0x18402014 $(srec_cat_le_cmd) $(CONFIG_SYS_UBOOT_START) 4 \
+			-generate 0x18402014 0x18402018 $(srec_cat_le_cmd) 0x1ef000 4 \
+			-generate 0x18402018 0x1840201c $(srec_cat_le_cmd) 0x0 4 \
+			-generate 0x1840201c 0x18402020 $(srec_cat_le_cmd) 0x0 4
+else
+ifneq ($(CONFIG_RCAR_GEN4),)
+quiet_cmd_srec_cat = SRECCAT $@
+      cmd_srec_cat = srec_cat -output $@ -M 8 $< -M 8 \
+			-Output_Block_Size 16 \
+			-generate 0xeb203000 0xeb203154 $(srec_cat_le_cmd) 0x0 4 \
+			-generate 0xeb203154 0xeb203158 $(srec_cat_le_cmd) $(CONFIG_SPL_TEXT_BASE) 4 \
+			-generate 0xeb203158 0xeb203264 $(srec_cat_le_cmd) 0x0 4 \
+			-generate 0xeb203264 0xeb203268 $(srec_cat_le_cmd) $$(( ( $2 + 4 ) / 4 )) 4
+else
 ifneq ($(CONFIG_R8A774C0)$(CONFIG_R8A77990)$(CONFIG_R8A77995),)
 #
 # The first 6 generate statements generate the R-Car Gen3 SCIF loader header.
@@ -90,9 +128,17 @@ quiet_cmd_srec_cat = SRECCAT $@
 			-generate 0xe6301154 0xe6301158 $(srec_cat_le_cmd) $(CONFIG_SPL_TEXT_BASE) 4 \
 			-generate 0xe6301264 0xe6301268 $(srec_cat_le_cmd) $2 4
 endif
+endif
+endif
 
 spl/u-boot-spl.scif: spl/u-boot-spl.srec spl/u-boot-spl.bin
 	$(call cmd,srec_cat,$(shell wc -c spl/u-boot-spl.bin | awk '{printf("0x%08x\n",$$1)}'))
+
+u-boot-elf.scif: u-boot-elf.srec u-boot.bin
+	$(call cmd,srec_cat,$(shell wc -c u-boot-dtb.bin | awk '{printf("0x%08x\n",$$1)}'))
+
+u-boot-elf.shdr: u-boot-elf.srec u-boot.bin
+	$(call cmd,srec_shdr_cat,$(shell wc -c u-boot-dtb.bin | awk '{printf("0x%08x\n",$$1)}'))
 
 # if srec_cat is present build u-boot-spl.scif by default
 has_srec_cat = $(call try-run,srec_cat -VERSion,y,n)

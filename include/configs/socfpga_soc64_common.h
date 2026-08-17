@@ -19,6 +19,20 @@
 #define CPU_RELEASE_ADDR		0xFFD12210
 
 /*
+ * Share sysmgr.boot_scratch_cold6 & 7 (64bit) with VBAR_LE3_BASE_ADDR
+ * Indicate L2 reset is done. HPS should trigger warm reset via RMR_EL3.
+ */
+#define L2_RESET_DONE_REG		0xFFD12218
+
+/* sysmgr.boot_scratch_cold8 bit 17 (1bit) will be used to check whether CPU0
+ * is being powered off/on from kernel
+ */
+#define BOOT_SCRATCH_COLD8		0xFFD12220
+
+/* Magic word to indicate L2 reset is completed */
+#define L2_RESET_DONE_STATUS		0x1228E5E7
+
+/*
  * U-Boot console configurations
  */
 
@@ -27,7 +41,7 @@
 /*
  * U-Boot run time memory configurations
  */
-#if IS_ENABLED(CONFIG_TARGET_SOCFPGA_AGILEX5)
+#if IS_ENABLED(CONFIG_ARCH_SOCFPGA_AGILEX5)
 #define CFG_SYS_INIT_RAM_ADDR	0x0
 #define CFG_SYS_INIT_RAM_SIZE	0x80000
 #else
@@ -38,6 +52,9 @@
 /*
  * U-Boot environment configurations
  */
+
+#define CFG_SYS_NAND_U_BOOT_SIZE	(1 * 1024 * 1024)
+#define CFG_SYS_NAND_U_BOOT_DST	CONFIG_TEXT_BASE
 
 /*
  * Environment variable
@@ -73,13 +90,35 @@
 #define BOOTENV_DEV_NAME_QSPI(devtypeu, devtypel, instance) \
 	"qspi "
 
+#if IS_ENABLED(CONFIG_CMD_NAND)
+#define BOOT_TARGET_DEVICES_NAND(func)	func(NAND, nand, na)
+#else
+#define BOOT_TARGET_DEVICES_NAND(func)
+#endif
+
+#define BOOTENV_DEV_NAND(devtypeu, devtypel, instance) \
+	"bootcmd_nand=ubi detach && " \
+	"setenv mtdids 'nor0=nor0,nand0=nand.0' && " \
+	"setenv mtdparts 'mtdparts=nor0:66m(qspi_uboot),190m(qspi_root);" \
+	"nand.0:2m(u-boot),500m(root)' && " \
+	"env select UBI; saveenv && " \
+	"ubi part root && " \
+	"ubi readvol ${scriptaddr} script && " \
+	"echo NAND: Trying to boot script at ${scriptaddr} && " \
+	"source ${scriptaddr}; " \
+	"echo NAND: SCRIPT FAILED: continuing...; ubi detach;\0"
+
+#define BOOTENV_DEV_NAME_NAND(devtypeu, devtypel, instance) \
+	"nand "
+
 #define BOOT_TARGET_DEVICES(func) \
 	BOOT_TARGET_DEVICES_MMC(func) \
-	BOOT_TARGET_DEVICES_QSPI(func)
+	BOOT_TARGET_DEVICES_QSPI(func) \
+	BOOT_TARGET_DEVICES_NAND(func)
 
 #include <config_distro_bootcmd.h>
 
-#if IS_ENABLED(CONFIG_TARGET_SOCFPGA_AGILEX5)
+#if IS_ENABLED(CONFIG_ARCH_SOCFPGA_AGILEX5)
 
 #define CFG_EXTRA_ENV_SETTINGS \
 	"kernel_addr_r=0x82000000\0" \
@@ -137,12 +176,13 @@
 		" ${qspi_clock}; echo QSPI clock frequency updated; fi; fi\0" \
 	"scriptaddr=0x05FF0000\0" \
 	"scriptfile=boot.scr\0" \
+	"nandroot=ubi0:rootfs\0" \
 	"socfpga_legacy_reset_compat=1\0" \
 	"smc_fid_rd=0xC2000007\0" \
 	"smc_fid_wr=0xC2000008\0" \
 	"smc_fid_upd=0xC2000009\0 " \
 	BOOTENV
-#endif /*#IS_ENABLED(CONFIG_TARGET_SOCFPGA_AGILEX5)*/
+#endif /*#IS_ENABLED(CONFIG_ARCH_SOCFPGA_AGILEX5)*/
 
 #else
 
@@ -192,6 +232,10 @@
 	"scriptfile=u-boot.scr\0" \
 	"fatscript=if fatload mmc 0:1 ${scriptaddr} ${scriptfile};" \
 		   "then source ${scriptaddr}:script; fi\0" \
+	"nandfitboot=setenv bootargs " CONFIG_BOOTARGS \
+			" root=${nandroot} rw rootwait rootfstype=ubifs ubi.mtd=1; " \
+			"bootm ${loadaddr}\0" \
+	"nandfitload=ubi part root; ubi readvol ${loadaddr} kernel\0" \
 	"socfpga_legacy_reset_compat=1\0" \
 	"smc_fid_rd=0xC2000007\0" \
 	"smc_fid_wr=0xC2000008\0" \
@@ -201,7 +245,7 @@
 /*
  * External memory configurations
  */
-#if IS_ENABLED(CONFIG_TARGET_SOCFPGA_AGILEX5)
+#if IS_ENABLED(CONFIG_ARCH_SOCFPGA_AGILEX5)
 #define PHYS_SDRAM_1			0x80000000
 #define PHYS_SDRAM_1_SIZE		(1 * 1024 * 1024 * 1024)
 #define CFG_SYS_SDRAM_BASE		0x80000000
@@ -226,7 +270,7 @@
 /*
  * L4 Watchdog
  */
-#ifdef CONFIG_TARGET_SOCFPGA_STRATIX10
+#ifdef CONFIG_ARCH_SOCFPGA_STRATIX10
 #ifndef __ASSEMBLY__
 unsigned int cm_get_l4_sys_free_clk_hz(void);
 #define CFG_DW_WDT_CLOCK_KHZ		(cm_get_l4_sys_free_clk_hz() / 1000)

@@ -11,6 +11,7 @@
 #include <div64.h>
 #include <dm/device.h>
 #include <dm/root.h>
+#include <efi_device_path.h>
 #include <efi_loader.h>
 #include <irq_func.h>
 #include <log.h>
@@ -57,7 +58,7 @@ static efi_handle_t current_image;
  * restriction so we need to manually swap its and our view of that register on
  * EFI callback entry/exit.
  */
-static volatile gd_t *efi_gd, *app_gd;
+static gd_t *efi_gd, *app_gd;
 #endif
 
 efi_status_t efi_uninstall_protocol
@@ -2095,8 +2096,12 @@ efi_status_t EFIAPI efi_load_image(bool boot_policy,
 	EFI_ENTRY("%d, %p, %pD, %p, %zu, %p", boot_policy, parent_image,
 		  file_path, source_buffer, source_size, image_handle);
 
-	if (!image_handle || (!source_buffer && !file_path) ||
-	    !efi_search_obj(parent_image) ||
+	if (!source_buffer && !file_path) {
+		ret = EFI_NOT_FOUND;
+		goto error;
+	}
+
+	if (!image_handle || !efi_search_obj(parent_image) ||
 	    /* The parent image handle must refer to a loaded image */
 	    !parent_image->type) {
 		ret = EFI_INVALID_PARAMETER;
@@ -2129,6 +2134,11 @@ efi_status_t EFIAPI efi_load_image(bool boot_policy,
 		*image_handle = NULL;
 		free(info);
 	}
+
+	if (IS_ENABLED(CONFIG_EFI_DEBUG_SUPPORT) && *image_handle)
+		efi_core_new_debug_image_info_entry(EFI_DEBUG_IMAGE_INFO_TYPE_NORMAL,
+						    info,
+						    *image_handle);
 error:
 	return EFI_EXIT(ret);
 }
@@ -3195,7 +3205,7 @@ efi_status_t EFIAPI efi_start_image(efi_handle_t image_handle,
 	struct efi_loaded_image_obj *image_obj =
 		(struct efi_loaded_image_obj *)image_handle;
 	efi_status_t ret;
-	void *info;
+	struct efi_loaded_image *info;
 	efi_handle_t parent_image = current_image;
 	efi_status_t exit_status;
 	jmp_buf exit_jmp;
@@ -3213,7 +3223,7 @@ efi_status_t EFIAPI efi_start_image(efi_handle_t image_handle,
 		return EFI_EXIT(EFI_SECURITY_VIOLATION);
 
 	ret = EFI_CALL(efi_open_protocol(image_handle, &efi_guid_loaded_image,
-					 &info, NULL, NULL,
+					 (void **)&info, NULL, NULL,
 					 EFI_OPEN_PROTOCOL_GET_PROTOCOL));
 	if (ret != EFI_SUCCESS)
 		return EFI_EXIT(EFI_INVALID_PARAMETER);
@@ -3266,7 +3276,8 @@ efi_status_t EFIAPI efi_start_image(efi_handle_t image_handle,
 
 	current_image = image_handle;
 	image_obj->header.type = EFI_OBJECT_TYPE_STARTED_IMAGE;
-	EFI_PRINT("Jumping into 0x%p\n", image_obj->entry);
+	EFI_PRINT("Starting image loaded at 0x%p, entry point 0x%p\n",
+		  info->image_base, image_obj->entry);
 	ret = EFI_CALL(image_obj->entry(image_handle, &systab));
 
 	/*
@@ -3358,6 +3369,8 @@ efi_status_t EFIAPI efi_unload_image(efi_handle_t image_handle)
 		ret = EFI_INVALID_PARAMETER;
 		goto out;
 	}
+	if (IS_ENABLED(CONFIG_EFI_DEBUG_SUPPORT))
+		efi_core_remove_debug_image_info_entry(image_handle);
 	switch (efiobj->type) {
 	case EFI_OBJECT_TYPE_STARTED_IMAGE:
 		/* Call the unload function */
@@ -3485,12 +3498,6 @@ static efi_status_t EFIAPI efi_exit(efi_handle_t image_handle,
 		if (ret != EFI_SUCCESS)
 			EFI_PRINT("%s: out of memory\n", __func__);
 	}
-	/* efi_delete_image() frees image_obj. Copy before the call. */
-	exit_jmp = image_obj->exit_jmp;
-	*image_obj->exit_status = exit_status;
-	if (image_obj->image_type == IMAGE_SUBSYSTEM_EFI_APPLICATION ||
-	    exit_status != EFI_SUCCESS)
-		efi_delete_image(image_obj, loaded_image_protocol);
 
 	if (IS_ENABLED(CONFIG_EFI_TCG2_PROTOCOL)) {
 		if (image_obj->image_type == IMAGE_SUBSYSTEM_EFI_APPLICATION) {
@@ -3500,6 +3507,13 @@ static efi_status_t EFIAPI efi_exit(efi_handle_t image_handle,
 					  ret);
 		}
 	}
+
+	/* efi_delete_image() frees image_obj. Copy before the call. */
+	exit_jmp = image_obj->exit_jmp;
+	*image_obj->exit_status = exit_status;
+	if (image_obj->image_type == IMAGE_SUBSYSTEM_EFI_APPLICATION ||
+	    exit_status != EFI_SUCCESS)
+		efi_delete_image(image_obj, loaded_image_protocol);
 
 	/* Make sure entry/exit counts for EFI world cross-overs match */
 	EFI_EXIT(exit_status);
@@ -3881,7 +3895,7 @@ efi_status_t EFIAPI efi_disconnect_controller(
 				      &number_of_children,
 				      &child_handle_buffer);
 	if (r != EFI_SUCCESS)
-		return r;
+		goto out;
 	sole_child = (number_of_children == 1);
 
 	if (child_handle) {

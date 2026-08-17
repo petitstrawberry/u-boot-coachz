@@ -5,7 +5,6 @@
  * Copyright 2020 NXP
  */
 
-#include <asm/global_data.h>
 #include <asm/io.h>
 #include <dm/device.h>
 #include <dm/fdtaddr.h>
@@ -14,8 +13,6 @@
 #include <linux/err.h>
 #include <watchdog.h>
 #include <wdt.h>
-
-DECLARE_GLOBAL_DATA_PTR;
 
 /* SBSA Generic Watchdog register definitions */
 /* refresh frame */
@@ -53,6 +50,7 @@ static int sbsa_gwdt_start(struct udevice *dev, u64 timeout, ulong flags)
 {
 	struct sbsa_gwdt_priv *priv = dev_get_priv(dev);
 	u32 clk;
+	u64 tout_wdog;
 
 	/*
 	 * it work in the single stage mode in u-boot,
@@ -61,8 +59,13 @@ static int sbsa_gwdt_start(struct udevice *dev, u64 timeout, ulong flags)
 	 * to half value of timeout.
 	 */
 	clk = get_tbclk();
-	writel(clk / (2 * 1000) * timeout,
-	       priv->reg_control + SBSA_GWDT_WOR);
+
+	/* if requested timeout overflows, clamp it to u32_max */
+	tout_wdog = ((u64)clk * timeout) / (2 * 1000);
+	if (tout_wdog > U32_MAX)
+		tout_wdog = U32_MAX;
+
+	writel(tout_wdog, priv->reg_control + SBSA_GWDT_WOR);
 
 	/* writing WCS will cause an explicit watchdog refresh */
 	writel(SBSA_GWDT_WCS_EN, priv->reg_control + SBSA_GWDT_WCS);

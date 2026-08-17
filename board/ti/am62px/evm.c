@@ -7,14 +7,17 @@
  */
 
 #include <efi_loader.h>
+#include <image.h>
 #include <asm/arch/hardware.h>
 #include <asm/io.h>
+#include <cpu_func.h>
 #include <dm/uclass.h>
 #include <env.h>
 #include <fdt_support.h>
 #include <spl.h>
 #include <asm/arch/k3-ddr.h>
 #include "../common/fdt_ops.h"
+#include "../common/k3_32k_lfosc.h"
 
 struct efi_fw_image fw_images[] = {
 	{
@@ -41,13 +44,23 @@ struct efi_capsule_update_info update_info = {
 	.images = fw_images,
 };
 
-int board_init(void)
+int board_fit_config_name_match(const char *name)
 {
-	return 0;
+	return k3_fit_config_match_security_state(name);
 }
 
+#if IS_ENABLED(CONFIG_SPL_BUILD)
+void spl_board_init(void)
+{
+	if (IS_ENABLED(CONFIG_TI_K3_BOARD_LFOSC))
+		enable_32k_lfosc();
+
+	enable_caches();
+}
+#endif
+
 #if defined(CONFIG_XPL_BUILD)
-void spl_perform_fixups(struct spl_image_info *spl_image)
+void spl_perform_board_fixups(struct spl_image_info *spl_image)
 {
 	if (IS_ENABLED(CONFIG_K3_DDRSS)) {
 		if (IS_ENABLED(CONFIG_K3_INLINE_ECC))

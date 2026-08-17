@@ -46,6 +46,9 @@ static enum env_location env_locations[] = {
 #ifdef CONFIG_ENV_IS_IN_MMC
 	ENVL_MMC,
 #endif
+#ifdef CONFIG_ENV_IS_IN_SCSI
+	ENVL_SCSI,
+#endif
 #ifdef CONFIG_ENV_IS_IN_NAND
 	ENVL_NAND,
 #endif
@@ -57,6 +60,9 @@ static enum env_location env_locations[] = {
 #endif
 #ifdef CONFIG_ENV_IS_IN_SPI_FLASH
 	ENVL_SPI_FLASH,
+#endif
+#ifdef CONFIG_ENV_IS_IN_MTD
+	ENVL_MTD,
 #endif
 #ifdef CONFIG_ENV_IS_IN_UBI
 	ENVL_UBI,
@@ -183,7 +189,7 @@ int env_load(void)
 		if (!env_has_inited(drv->location))
 			continue;
 
-		printf("Loading Environment from %s... ", drv->name);
+		printf("Loading Environment from %s...\r", drv->name);
 		/*
 		 * In error case, the error message must be printed during
 		 * drv->load() in some underlying API, and it must be exactly
@@ -191,7 +197,7 @@ int env_load(void)
 		 */
 		ret = drv->load();
 		if (!ret) {
-			printf("OK\n");
+			printf("Loading Environment from %s... OK\n", drv->name);
 			gd->env_load_prio = prio;
 
 			return 0;
@@ -200,7 +206,7 @@ int env_load(void)
 			if (best_prio == -1)
 				best_prio = prio;
 		} else {
-			debug("Failed (%d)\n", ret);
+			debug("Loading Environment from %s... Failed (%d)\n", drv->name, ret);
 		}
 	}
 

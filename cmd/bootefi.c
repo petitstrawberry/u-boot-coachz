@@ -9,6 +9,7 @@
 
 #include <command.h>
 #include <efi.h>
+#include <efi_device_path.h>
 #include <efi_loader.h>
 #include <exports.h>
 #include <log.h>
@@ -16,10 +17,7 @@
 #include <mapmem.h>
 #include <vsprintf.h>
 #include <asm-generic/sections.h>
-#include <asm/global_data.h>
 #include <linux/string.h>
-
-DECLARE_GLOBAL_DATA_PTR;
 
 static struct efi_device_path *test_image_path;
 static struct efi_device_path *test_device_path;
@@ -135,22 +133,44 @@ static int do_bootefi(struct cmd_tbl *cmdtp, int flag, int argc,
 {
 	efi_status_t ret;
 	char *p;
-	void *fdt, *image_buf;
-	unsigned long addr, size;
+	void *fdt, *initrd = NULL, *image_buf;
+	unsigned long addr, size, rd_len = 0, fdt_addr = 0;
 	void *image_addr;
 	size_t image_size;
+	int fdt_arg = 2;
 
 	if (argc < 2)
 		return CMD_RET_USAGE;
 
-	if (argc > 2) {
-		uintptr_t fdt_addr;
+	/* Initialize EFI drivers */
+	ret = efi_init_obj_list();
+	if (ret != EFI_SUCCESS)
+		return CMD_RET_FAILURE;
 
-		fdt_addr = hextoul(argv[2], NULL);
-		fdt = map_sysmem(fdt_addr, 0);
-	} else {
-		fdt = EFI_FDT_USE_INTERNAL;
+	if (argc > 2) {
+		ulong rd_addr = 0;
+		char *end = strchr(argv[2], ':');
+
+		if (end) {
+			rd_addr = hextoul(argv[2], NULL);
+			if (!rd_addr)
+				return CMD_RET_USAGE;
+
+			rd_len = hextoul(++end, NULL);
+			initrd = map_sysmem(rd_addr, rd_len);
+			++fdt_arg;
+		}
 	}
+
+	if (argc > fdt_arg + 1)
+		return CMD_RET_USAGE;
+	if (argc == fdt_arg + 1)
+		fdt_addr = hextoul(argv[fdt_arg], NULL);
+
+	if (fdt_addr)
+		fdt = map_sysmem(fdt_addr, 0);
+	else
+		fdt = EFI_FDT_USE_INTERNAL;
 
 	if (IS_ENABLED(CONFIG_CMD_BOOTEFI_BOOTMGR) &&
 	    !strcmp(argv[1], "bootmgr")) {
@@ -164,14 +184,6 @@ static int do_bootefi(struct cmd_tbl *cmdtp, int flag, int argc,
 
 	if (IS_ENABLED(CONFIG_CMD_BOOTEFI_SELFTEST) &&
 	    !strcmp(argv[1], "selftest")) {
-		/* Initialize EFI drivers */
-		ret = efi_init_obj_list();
-		if (ret != EFI_SUCCESS) {
-			log_err("Error: Cannot initialize UEFI sub-system, r = %lu\n",
-				ret & ~EFI_ERROR_MASK);
-			return CMD_RET_FAILURE;
-		}
-
 		ret = efi_install_fdt(fdt);
 		if (ret != EFI_SUCCESS)
 			return CMD_RET_FAILURE;
@@ -214,7 +226,7 @@ static int do_bootefi(struct cmd_tbl *cmdtp, int flag, int argc,
 		}
 	}
 
-	ret = efi_binary_run(image_buf, size, fdt, NULL, 0);
+	ret = efi_binary_run(image_buf, size, fdt, initrd, rd_len);
 
 	if (ret != EFI_SUCCESS)
 		return CMD_RET_FAILURE;
@@ -223,7 +235,7 @@ static int do_bootefi(struct cmd_tbl *cmdtp, int flag, int argc,
 }
 
 U_BOOT_LONGHELP(bootefi,
-	"<image address>[:<image size>] [<fdt address>]\n"
+	"<image address>[:<size>] [<initrd address>:<size>] [<fdt address>]\n"
 	"  - boot EFI payload\n"
 #ifdef CONFIG_CMD_BOOTEFI_HELLO
 	"bootefi hello\n"

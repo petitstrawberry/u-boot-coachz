@@ -38,6 +38,7 @@
 
 #include "mux_data.h"
 #include "../common/board_detect.h"
+#include "../common/fdt_ops.h"
 
 #define board_is_dra76x_evm()		board_ti_is("DRA76/7x")
 #define board_is_dra74x_evm()		board_ti_is("5777xCPU")
@@ -642,11 +643,11 @@ int dram_init_banksize(void)
 
 	ram_size = board_ti_get_emif_size();
 
-	gd->bd->bi_dram[0].start = CFG_SYS_SDRAM_BASE;
-	gd->bd->bi_dram[0].size = get_effective_memsize();
+	gd->dram[0].start = CFG_SYS_SDRAM_BASE;
+	gd->dram[0].size = get_effective_memsize();
 	if (ram_size > CFG_MAX_MEM_MAPPED) {
-		gd->bd->bi_dram[1].start = 0x200000000;
-		gd->bd->bi_dram[1].size = ram_size - CFG_MAX_MEM_MAPPED;
+		gd->dram[1].start = 0x200000000;
+		gd->dram[1].size = ram_size - CFG_MAX_MEM_MAPPED;
 	}
 
 	return 0;
@@ -664,6 +665,15 @@ static int device_okay(const char *path)
 	return fdtdec_get_is_enabled(gd->fdt_blob, node);
 }
 #endif
+
+static struct ti_fdt_map ti_omap_dra7_evm_fdt_map[] = {
+	{"omap5_uevm", "ti/omap/omap5-uevm.dtb"},
+	{"dra7xx", "ti/omap/dra7-evm.dtb"},
+	{"dra72x-revc", "ti/omap/dra72-evm-revc.dtb"},
+	{"dra72x", "ti/omap/dra72-evm.dtb"},
+	{"dra71x", "ti/omap/dra71-evm.dtb"},
+	{"dra76x_acd", "ti/omap/dra76-evm.dtb"},
+};
 
 int board_late_init(void)
 {
@@ -686,6 +696,7 @@ int board_late_init(void)
 	}
 
 	set_board_info_env(name);
+	ti_set_fdt_env(name, ti_omap_dra7_evm_fdt_map);
 
 	/*
 	 * Default FIT boot on HS devices. Non FIT images are not allowed

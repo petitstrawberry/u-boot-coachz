@@ -50,7 +50,6 @@
 #include <spl.h>
 #include <sy8106a.h>
 #include <asm/setup.h>
-#include <status_led.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -114,10 +113,14 @@ void i2c_init_board(void)
 	clock_twi_onoff(5, 1);
 	sunxi_gpio_set_cfgpin(SUNXI_GPL(8), SUN50I_GPL_R_TWI);
 	sunxi_gpio_set_cfgpin(SUNXI_GPL(9), SUN50I_GPL_R_TWI);
-#elif CONFIG_MACH_SUN50I_H616
+#elif defined(CONFIG_MACH_SUN50I_H616)
 	clock_twi_onoff(5, 1);
 	sunxi_gpio_set_cfgpin(SUNXI_GPL(0), SUN50I_H616_GPL_R_TWI);
 	sunxi_gpio_set_cfgpin(SUNXI_GPL(1), SUN50I_H616_GPL_R_TWI);
+#elif CONFIG_MACH_SUN55I_A523
+	clock_twi_onoff(5, 1);
+	sunxi_gpio_set_cfgpin(SUNXI_GPL(0), SUN50I_GPL_R_TWI);
+	sunxi_gpio_set_cfgpin(SUNXI_GPL(1), SUN50I_GPL_R_TWI);
 #else
 	clock_twi_onoff(5, 1);
 	sunxi_gpio_set_cfgpin(SUNXI_GPL(0), SUN8I_H3_GPL_R_TWI);
@@ -303,15 +306,24 @@ static void nand_pinmux_setup(void)
 
 static void nand_clock_setup(void)
 {
-	struct sunxi_ccm_reg *const ccm =
-		(struct sunxi_ccm_reg *)SUNXI_CCM_BASE;
+	void * const ccm = (void *)SUNXI_CCM_BASE;
 
-	setbits_le32(&ccm->ahb_gate0, (CLK_GATE_OPEN << AHB_GATE_OFFSET_NAND0));
+#if defined(CONFIG_MACH_SUN50I_H616) || defined(CONFIG_MACH_SUN50I_H6)
+	setbits_le32(ccm + CCU_H6_NAND_GATE_RESET,
+		     (1 << GATE_SHIFT) | (1 << RESET_SHIFT));
+	setbits_le32(ccm + CCU_H6_MBUS_GATE, (1 << MBUS_GATE_OFFSET_NAND));
+	setbits_le32(ccm + CCU_NAND1_CLK_CFG, CCM_NAND_CTRL_ENABLE |
+		     CCM_NAND_CTRL_N(0) | CCM_NAND_CTRL_M(1));
+#else
+	setbits_le32(ccm + CCU_AHB_GATE0,
+		     (CLK_GATE_OPEN << AHB_GATE_OFFSET_NAND0));
 #if defined CONFIG_MACH_SUN6I || defined CONFIG_MACH_SUN8I || \
     defined CONFIG_MACH_SUN9I || defined CONFIG_MACH_SUN50I
-	setbits_le32(&ccm->ahb_reset0_cfg, (1 << AHB_GATE_OFFSET_NAND0));
+	setbits_le32(ccm + CCU_AHB_RESET0_CFG, (1 << AHB_GATE_OFFSET_NAND0));
 #endif
-	setbits_le32(&ccm->nand0_clk_cfg, CCM_NAND_CTRL_ENABLE | AHB_DIV_1);
+#endif
+	setbits_le32(ccm + CCU_NAND0_CLK_CFG, CCM_NAND_CTRL_ENABLE |
+		     CCM_NAND_CTRL_N(0) | CCM_NAND_CTRL_M(1));
 }
 
 void board_nand_init(void)
@@ -435,7 +447,8 @@ static void mmc_pinmux_setup(int sdc)
 			sunxi_gpio_set_pull(pin, SUNXI_GPIO_PULL_UP);
 			sunxi_gpio_set_drv(pin, 2);
 		}
-#elif defined(CONFIG_MACH_SUN50I_H616)
+#elif defined(CONFIG_MACH_SUN50I_H616) || defined(CONFIG_MACH_SUN50I_A133) || \
+      defined(CONFIG_MACH_SUN55I_A523)
 		/* SDC2: PC0-PC1, PC5-PC6, PC8-PC11, PC13-PC16 */
 		for (pin = SUNXI_GPC(0); pin <= SUNXI_GPC(16); pin++) {
 			if (pin > SUNXI_GPC(1) && pin < SUNXI_GPC(5))
@@ -516,7 +529,7 @@ int board_mmc_init(struct bd_info *bis)
 	return 0;
 }
 
-#ifdef CONFIG_SYS_MMC_ENV_DEV
+#ifdef CONFIG_ENV_MMC_DEVICE_INDEX
 int mmc_get_env_dev(void)
 {
 	switch (sunxi_get_boot_device()) {
@@ -525,7 +538,7 @@ int mmc_get_env_dev(void)
 	case BOOT_DEVICE_MMC2:
 		return 1;
 	default:
-		return CONFIG_SYS_MMC_ENV_DEV;
+		return CONFIG_ENV_MMC_DEVICE_INDEX;
 	}
 }
 #endif
@@ -547,14 +560,23 @@ static void sunxi_spl_store_dram_size(phys_addr_t dram_size)
 	spl->dram_size = dram_size >> 20;
 }
 
+static void status_led_init(void)
+{
+#if CONFIG_IS_ENABLED(SUNXI_LED_STATUS)
+	unsigned int state = IS_ENABLED(CONFIG_SPL_SUNXI_LED_STATUS_ACTIVE_HIGH);
+	unsigned int gpio = CONFIG_SPL_SUNXI_LED_STATUS_GPIO;
+
+	gpio_request(gpio, "gpio_led");
+	gpio_direction_output(gpio, state);
+#endif
+}
+
 void sunxi_board_init(void)
 {
 	int power_failed = 0;
 
-#ifdef CONFIG_LED_STATUS
-	if (IS_ENABLED(CONFIG_SPL_DRIVERS_MISC))
+	if (CONFIG_IS_ENABLED(SUNXI_LED_STATUS))
 		status_led_init();
-#endif
 
 #ifdef CONFIG_SY8106A_POWER
 	power_failed = sy8106a_set_vout1(CONFIG_SY8106A_VOUT1_VOLT);
@@ -829,8 +851,11 @@ int misc_init_r(void)
 	/* Set fdtfile to match the FIT configuration chosen in SPL. */
 	spl_dt_name = get_spl_dt_name();
 	if (spl_dt_name) {
-		char *prefix = IS_ENABLED(CONFIG_ARM64) ? "allwinner/" : "";
+		const char *prefix = "";
 		char str[64];
+
+		if (IS_ENABLED(CONFIG_ARM64) && !IS_ENABLED(CONFIG_OF_UPSTREAM))
+			prefix = "allwinner/";
 
 		snprintf(str, sizeof(str), "%s%s.dtb", prefix, spl_dt_name);
 		env_set("fdtfile", str);

@@ -3,18 +3,24 @@
 /* Copyright (C) 2024 Linaro Ltd. */
 
 #include <command.h>
+#include <env.h>
 #include <dm/device.h>
 #include <dm/uclass.h>
 #include <hexdump.h>
+#include <linux/compiler_attributes.h>
+#include <linux/kernel.h>
 #include <lwip/ip4_addr.h>
+#include <lwip/dns.h>
 #include <lwip/err.h>
 #include <lwip/netif.h>
 #include <lwip/pbuf.h>
 #include <lwip/etharp.h>
 #include <lwip/init.h>
 #include <lwip/prot/etharp.h>
+#include <lwip/timeouts.h>
 #include <net.h>
 #include <timer.h>
+#include <u-boot/schedule.h>
 
 /* xx:xx:xx:xx:xx:xx\0 */
 #define MAC_ADDR_STRLEN 18
@@ -22,43 +28,59 @@
 #if defined(CONFIG_API) || defined(CONFIG_EFI_LOADER)
 void (*push_packet)(void *, int len) = 0;
 #endif
-static int net_try_count;
+int net_try_count;
 static int net_restarted;
 int net_restart_wrap;
-static uchar net_pkt_buf[(PKTBUFSRX) * PKTSIZE_ALIGN + PKTALIGN];
-uchar *net_rx_packets[PKTBUFSRX];
-uchar *net_rx_packet;
+static int net_lwip_eth_started;
+static uchar net_pkt_buf[(PKTBUFSRX) * PKTSIZE_ALIGN + PKTALIGN]
+	__aligned(PKTALIGN);
 const u8 net_bcast_ethaddr[6] = { 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 char *pxelinux_configfile;
-/* Our IP addr (0 = unknown) */
-struct in_addr	net_ip;
-char net_boot_file_name[1024];
 
 static err_t net_lwip_tx(struct netif *netif, struct pbuf *p)
 {
 	struct udevice *udev = netif->state;
-	void *pp = NULL;
+	bool pp_allocated = false;
+	u32 plen;
+	void *pp;
 	int err;
 
-	if (CONFIG_IS_ENABLED(LWIP_DEBUG_RXTX)) {
-		printf("net_lwip_tx: %u bytes, udev %s\n", p->len, udev->name);
-		print_hex_dump("net_lwip_tx: ", 0, 16, 1, p->payload, p->len,
-			       true);
-	}
-
-	if ((unsigned long)p->payload % PKTALIGN) {
+	if ((unsigned long)p->payload % PKTALIGN || p->len != p->tot_len) {
 		/*
 		 * Some net drivers have strict alignment requirements and may
 		 * fail or output invalid data if the packet is not aligned.
+		 *
+		 * A packet may also be stored in multiple chained pbufs. In
+		 * this case, assemble the fragments into one contiguous packet
+		 * buffer before passing it to the Ethernet driver.
 		 */
-		pp = memalign(PKTALIGN, p->len);
+
+		pp = memalign(PKTALIGN, p->tot_len);
 		if (!pp)
-			return ERR_ABRT;
-		memcpy(pp, p->payload, p->len);
+			return ERR_MEM;
+
+		pp_allocated = true;
+
+		plen = pbuf_copy_partial(p, pp, p->tot_len, 0);
+		if (plen != p->tot_len) {
+			free(pp);
+			return ERR_BUF;
+		}
+	} else {
+		pp = p->payload;
+		plen = p->len;
 	}
 
-	err = eth_get_ops(udev)->send(udev, pp ? pp : p->payload, p->len);
-	free(pp);
+	if (CONFIG_IS_ENABLED(LWIP_DEBUG_RXTX)) {
+		printf("net_lwip_tx: %u bytes, udev %s\n", plen, udev->name);
+		print_hex_dump("net_lwip_tx: ", 0, 16, 1, pp, plen, true);
+	}
+
+	err = eth_get_ops(udev)->send(udev, pp, plen);
+
+	if (pp_allocated)
+		free(pp);
+
 	if (err) {
 		debug("send error %d\n", err);
 		return ERR_ABRT;
@@ -101,9 +123,9 @@ struct netif *net_lwip_get_netif(void)
 static int get_udev_ipv4_info(struct udevice *dev, ip4_addr_t *ip,
 			      ip4_addr_t *mask, ip4_addr_t *gw)
 {
-	char ipstr[] = "ipaddr\0\0";
-	char maskstr[] = "netmask\0\0";
-	char gwstr[] = "gatewayip\0\0";
+	char ipstr[] = "ipaddr\0\0\0";
+	char maskstr[] = "netmask\0\0\0";
+	char gwstr[] = "gatewayip\0\0\0";
 	int idx = dev_seq(dev);
 	char *env;
 
@@ -138,26 +160,71 @@ static int get_udev_ipv4_info(struct udevice *dev, ip4_addr_t *ip,
 }
 
 /*
+ * Initialize DNS via env
+ */
+int net_lwip_dns_init(void)
+{
+#if CONFIG_IS_ENABLED(DNS)
+	bool has_server = false;
+	ip_addr_t ns;
+	char *nsenv;
+
+	nsenv = env_get("dnsip");
+	if (nsenv && ipaddr_aton(nsenv, &ns)) {
+		dns_setserver(0, &ns);
+		has_server = true;
+	}
+
+	nsenv = env_get("dnsip2");
+	if (nsenv && ipaddr_aton(nsenv, &ns)) {
+		dns_setserver(1, &ns);
+		has_server = true;
+	}
+
+	if (!has_server) {
+		log_err("No valid name server (dnsip/dnsip2)\n");
+		return -EINVAL;
+	}
+
+	return 0;
+#else
+	log_err("DNS disabled\n");
+	return -EINVAL;
+#endif
+}
+
+/*
  * Initialize the network stack if needed and start the current device if valid
  */
 int net_lwip_eth_start(void)
 {
 	int ret;
 
+	if (net_lwip_eth_started++ > 0)
+		return 0;
+
 	net_init();
-	if (eth_is_on_demand_init()) {
+	eth_halt();
+	eth_set_current();
+	ret = eth_init();
+	if (ret < 0) {
+		net_lwip_eth_started--;
 		eth_halt();
-		eth_set_current();
-		ret = eth_init();
-		if (ret < 0) {
-			eth_halt();
-			return ret;
-		}
-	} else {
-		eth_init_state_only();
+		return ret;
 	}
 
 	return 0;
+}
+
+void net_lwip_eth_stop(void)
+{
+	if (!net_lwip_eth_started)
+		return;
+
+	if (--net_lwip_eth_started)
+		return;
+
+	eth_halt();
 }
 
 static struct netif *new_netif(struct udevice *udev, bool with_ip)
@@ -246,7 +313,6 @@ int net_init(void)
 
 	if (!init_done) {
 		eth_init_rings();
-		eth_init();
 		lwip_init();
 		init_done = true;
 	}
@@ -261,6 +327,7 @@ static struct pbuf *alloc_pbuf_and_copy(uchar *data, int len)
 	/* We allocate a pbuf chain of pbufs from the pool. */
 	p = pbuf_alloc(PBUF_RAW, len, PBUF_POOL);
 	if (!p) {
+		debug("Failed to allocate pbuf !!!!!\n");
 		LINK_STATS_INC(link.memerr);
 		LINK_STATS_INC(link.drop);
 		return NULL;
@@ -283,6 +350,11 @@ int net_lwip_rx(struct udevice *udev, struct netif *netif)
 	int flags;
 	int len;
 	int i;
+
+	/* lwIP timers */
+	sys_check_timeouts();
+	/* Other tasks and actions */
+	schedule();
 
 	if (!eth_is_active(udev))
 		return -EINVAL;
@@ -313,6 +385,44 @@ int net_lwip_rx(struct udevice *udev, struct netif *netif)
 		len = 0;
 
 	return len;
+}
+
+/**
+ * net_lwip_dns_resolve() - find IP address from name or IP
+ *
+ * @name_or_ip: host name or IP address
+ * @ip: output IP address
+ *
+ * Return value: 0 on success, -1 on failure.
+ */
+int net_lwip_dns_resolve(char *name_or_ip, ip_addr_t *ip)
+{
+#if defined(CONFIG_DNS)
+	char *var = "_dnsres";
+	char *argv[] = { "dns", name_or_ip, var, NULL };
+	int argc = ARRAY_SIZE(argv) - 1;
+#endif
+
+	if (ipaddr_aton(name_or_ip, ip))
+		return 0;
+
+#if defined(CONFIG_DNS)
+	if (do_dns(NULL, 0, argc, argv) != CMD_RET_SUCCESS)
+		return -1;
+
+	name_or_ip = env_get(var);
+	if (!name_or_ip)
+		return -1;
+
+	if (!ipaddr_aton(name_or_ip, ip))
+		return -1;
+
+	env_set(var, NULL);
+
+	return 0;
+#else
+	return -1;
+#endif
 }
 
 void net_process_received_packet(uchar *in_packet, int len)

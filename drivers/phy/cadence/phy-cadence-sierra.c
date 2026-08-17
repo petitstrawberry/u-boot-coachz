@@ -225,11 +225,6 @@ static const struct reg_field pllctrl_lock =
 static const struct reg_field phy_iso_link_ctrl_1 =
 				REG_FIELD(SIERRA_PHY_ISO_LINK_CTRL, 1, 1);
 
-static const char * const clk_names[] = {
-	[CDNS_SIERRA_PLL_CMNLC] = "pll_cmnlc",
-	[CDNS_SIERRA_PLL_CMNLC1] = "pll_cmnlc1",
-};
-
 enum cdns_sierra_cmn_plllc {
 	CMN_PLLLC,
 	CMN_PLLLC1,
@@ -602,7 +597,7 @@ static int cdns_sierra_pll_bind_of_clocks(struct cdns_sierra_phy *sp)
 	struct udevice *dev = sp->dev;
 	struct driver *cdns_sierra_clk_drv;
 	struct cdns_sierra_pll_mux_sel *data = pll_clk_mux_sel;
-	int i, rc;
+	int rc;
 
 	cdns_sierra_clk_drv = lists_driver_lookup_name("cdns_sierra_mux_clk");
 	if (!cdns_sierra_clk_drv) {
@@ -612,10 +607,8 @@ static int cdns_sierra_pll_bind_of_clocks(struct cdns_sierra_phy *sp)
 
 	rc = device_bind(dev, cdns_sierra_clk_drv, "pll_mux_clk",
 			 data, dev_ofnode(dev), NULL);
-	if (rc) {
-		dev_err(dev, "cannot bind driver for clock %s\n",
-			clk_names[i]);
-	}
+	if (rc)
+		dev_err(dev, "cannot bind driver for clock pll_mux_clk\n");
 
 	return 0;
 }
@@ -1075,12 +1068,12 @@ static int cdns_sierra_phy_probe(struct udevice *dev)
 
 	sp->dev = dev;
 
-	sp->base =  devfdt_remap_addr_index(dev, 0);
+	sp->base = dev_remap_addr_index(dev, 0);
 	if (!sp->base) {
 		dev_err(dev, "unable to map regs\n");
 		return -ENOMEM;
 	}
-	devfdt_get_addr_size_index(dev, 0, (fdt_size_t *)&sp->size);
+	dev_read_addr_size_index(dev, 0, (fdt_size_t *)&sp->size);
 
 	/* Get init data for this PHY */
 	data = (struct cdns_sierra_data *)dev_get_driver_data(dev);

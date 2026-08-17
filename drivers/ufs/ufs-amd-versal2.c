@@ -1,11 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * Copyright (C) 2024 Advanced Micro Devices, Inc.
+ * Copyright (C) 2024-2026 Advanced Micro Devices, Inc.
  */
 
 #include <clk.h>
 #include <dm.h>
-#include <ufs.h>
 #include <asm/io.h>
 #include <dm/device_compat.h>
 #include <zynqmp_firmware.h>
@@ -15,18 +14,18 @@
 #include <linux/time.h>
 #include <reset.h>
 
+#include <asm/arch/sys_proto.h>
+
 #include "ufs.h"
 #include "ufshcd-dwc.h"
 #include "ufshci-dwc.h"
 
-#define SRAM_CSR_INIT_DONE_MASK		BIT(0)
-#define SRAM_CSR_EXT_LD_DONE_MASK	BIT(1)
-#define SRAM_CSR_BYPASS_MASK		BIT(2)
-
 #define MPHY_FAST_RX_AFE_CAL		BIT(2)
 #define MPHY_FW_CALIB_CFG_VAL		BIT(8)
 
-#define TX_RX_CFG_RDY_MASK		GENMASK(3, 0)
+#define MPHY_RX_OVRD_EN			BIT(3)
+#define MPHY_RX_OVRD_VAL		BIT(2)
+#define MPHY_RX_ACK_MASK		BIT(0)
 
 #define TIMEOUT_MICROSEC		1000000L
 
@@ -224,7 +223,6 @@ static int ufs_versal2_setup_phy(struct ufs_hba *hba)
 static int ufs_versal2_phy_init(struct ufs_hba *hba)
 {
 	struct ufs_versal2_priv *priv = dev_get_priv(hba->dev);
-	u32 reg, time_left;
 	int ret;
 	static const struct ufshcd_dme_attr_val rmmi_attrs[] = {
 		{ UIC_ARG_MIB(CBREFCLKCTRL2), CBREFREFCLK_GATE_OVR_EN, DME_LOCAL },
@@ -233,24 +231,15 @@ static int ufs_versal2_phy_init(struct ufs_hba *hba)
 		{ UIC_ARG_MIB(VS_MPHYCFGUPDT), 1, DME_LOCAL }
 	};
 
-	/* Wait for Tx/Rx config_rdy */
-	time_left = TIMEOUT_MICROSEC;
-	do {
-		time_left--;
-		ret = zynqmp_pm_ufs_get_txrx_cfgrdy(&reg);
-		if (ret)
-			return ret;
-
-		reg &= TX_RX_CFG_RDY_MASK;
-		if (!reg)
-			break;
-
-		mdelay(5);
-	} while (time_left);
-
-	if (!time_left) {
+	/*
+	 * Wait for Tx/Rx config_rdy. The poll loop lives in the firmware
+	 * backend (IO, EEMI or SCMI) so this driver stays backend-agnostic;
+	 * the timeout budget stays here with the consumer.
+	 */
+	ret = zynqmp_pm_wait_mphy_tx_rx_config_ready(TIMEOUT_MICROSEC);
+	if (ret) {
 		dev_err(hba->dev, "Tx/Rx configuration signal busy.\n");
-		return -ETIMEDOUT;
+		return ret;
 	}
 
 	ret = ufshcd_dwc_dme_set_attrs(hba, rmmi_attrs, ARRAY_SIZE(rmmi_attrs));
@@ -264,24 +253,11 @@ static int ufs_versal2_phy_init(struct ufs_hba *hba)
 		return ret;
 	}
 
-	/* Wait for SRAM init done */
-	time_left = TIMEOUT_MICROSEC;
-	do {
-		time_left--;
-		ret = zynqmp_pm_ufs_sram_csr_read(&reg);
-		if (ret)
-			return ret;
-
-		reg &= SRAM_CSR_INIT_DONE_MASK;
-		if (reg)
-			break;
-
-		mdelay(5);
-	} while (time_left);
-
-	if (!time_left) {
+	/* Wait for SRAM init done (poll handled by the firmware backend). */
+	ret = zynqmp_pm_wait_sram_init_done(TIMEOUT_MICROSEC);
+	if (ret) {
 		dev_err(hba->dev, "SRAM initialization failed.\n");
-		return -ETIMEDOUT;
+		return ret;
 	}
 
 	ret = ufs_versal2_setup_phy(hba);
@@ -301,7 +277,7 @@ static int ufs_versal2_init(struct ufs_hba *hba)
 
 	priv->phy_mode = UFSHCD_DWC_PHY_MODE_ROM;
 
-	ret = clk_get_by_name(hba->dev, "core_clk", &clk);
+	ret = clk_get_by_name(hba->dev, "core", &clk);
 	if (ret) {
 		dev_err(hba->dev, "failed to get core_clk clock\n");
 		return ret;
@@ -315,18 +291,43 @@ static int ufs_versal2_init(struct ufs_hba *hba)
 	}
 	priv->host_clk = core_clk_rate;
 
-	priv->rstc = devm_reset_control_get(hba->dev, "ufshc-rst");
+	priv->rstc = devm_reset_control_get(hba->dev, "host");
 	if (IS_ERR(priv->rstc)) {
 		dev_err(hba->dev, "failed to get reset ctl: ufshc-rst\n");
 		return PTR_ERR(priv->rstc);
 	}
-	priv->rstphy = devm_reset_control_get(hba->dev, "ufsphy-rst");
+	priv->rstphy = devm_reset_control_get(hba->dev, "phy");
 	if (IS_ERR(priv->rstphy)) {
 		dev_err(hba->dev, "failed to get reset ctl: ufsphy-rst\n");
 		return PTR_ERR(priv->rstphy);
 	}
 
-	ret =  zynqmp_pm_ufs_cal_reg(&cal);
+	/* Assert RST_UFS Reset for UFS block in PMX_IOU */
+	ret = reset_assert(priv->rstc);
+	if (ret) {
+		dev_err(hba->dev, "host reset assert failed, err = %d\n", ret);
+		return ret;
+	}
+
+	/* Assert PHY reset */
+	ret = reset_assert(priv->rstphy);
+	if (ret) {
+		dev_err(hba->dev, "phy reset assert failed, err = %d\n", ret);
+		return ret;
+	}
+
+	ret = zynqmp_pm_set_sram_bypass();
+	if (ret) {
+		dev_err(hba->dev, "Bypass SRAM interface failed, err = %d\n", ret);
+		return ret;
+	}
+
+	/* De Assert RST_UFS Reset for UFS block in PMX_IOU */
+	ret = reset_deassert(priv->rstc);
+	if (ret)
+		dev_err(hba->dev, "host reset deassert failed, err = %d\n", ret);
+
+	ret = zynqmp_pm_get_ufs_calibration_values(&cal);
 	if (ret)
 		return ret;
 
@@ -341,57 +342,12 @@ static int ufs_versal2_init(struct ufs_hba *hba)
 static int ufs_versal2_hce_enable_notify(struct ufs_hba *hba,
 					 enum ufs_notify_change_status status)
 {
-	struct ufs_versal2_priv *priv = dev_get_priv(hba->dev);
-	u32 sram_csr;
-	int ret;
+	int ret = 0;
 
-	switch (status) {
-	case PRE_CHANGE:
-		/* Assert RST_UFS Reset for UFS block in PMX_IOU */
-		ret = reset_assert(priv->rstc);
-		if (ret) {
-			dev_err(hba->dev, "ufshc reset assert failed, err = %d\n", ret);
-			return ret;
-		}
-
-		/* Assert PHY reset */
-		ret = reset_assert(priv->rstphy);
-		if (ret) {
-			dev_err(hba->dev, "ufsphy reset assert failed, err = %d\n", ret);
-			return ret;
-		}
-
-		ret = zynqmp_pm_ufs_sram_csr_read(&sram_csr);
-		if (ret)
-			return ret;
-
-		if (!priv->phy_mode) {
-			sram_csr &= ~SRAM_CSR_EXT_LD_DONE_MASK;
-			sram_csr |= SRAM_CSR_BYPASS_MASK;
-		} else {
-			dev_err(hba->dev, "Invalid phy-mode %d.\n", priv->phy_mode);
-			return -EINVAL;
-		}
-
-		ret = zynqmp_pm_ufs_sram_csr_write(&sram_csr);
-		if (ret)
-			return ret;
-
-		/* De Assert RST_UFS Reset for UFS block in PMX_IOU */
-		ret = reset_deassert(priv->rstc);
-		if (ret)
-			dev_err(hba->dev, "ufshc reset deassert failed, err = %d\n", ret);
-
-		break;
-	case POST_CHANGE:
+	if (status == POST_CHANGE) {
 		ret = ufs_versal2_phy_init(hba);
 		if (ret)
 			dev_err(hba->dev, "Phy init failed (%d)\n", ret);
-
-		break;
-	default:
-		ret = -EINVAL;
-		break;
 	}
 
 	return ret;
@@ -422,10 +378,118 @@ static int ufs_versal2_link_startup_notify(struct ufs_hba *hba,
 	return ret;
 }
 
+static int ufs_versal2_phy_ratesel(struct ufs_hba *hba, u32 activelanes, u32 rx_req)
+{
+	u32 time_left, reg, lane;
+	int ret;
+
+	for (lane = 0; lane < activelanes; lane++) {
+		time_left = TIMEOUT_MICROSEC;
+		ret = ufs_versal2_phy_reg_read(hba, RX_OVRD_IN_1(lane), &reg);
+		if (ret)
+			return ret;
+
+		reg |= MPHY_RX_OVRD_EN;
+		if (rx_req)
+			reg |= MPHY_RX_OVRD_VAL;
+		else
+			reg &= ~MPHY_RX_OVRD_VAL;
+
+		ret = ufs_versal2_phy_reg_write(hba, RX_OVRD_IN_1(lane), reg);
+		if (ret)
+			return ret;
+
+		do {
+			ret = ufs_versal2_phy_reg_read(hba, RX_PCS_OUT(lane), &reg);
+			if (ret)
+				return ret;
+
+			reg &= MPHY_RX_ACK_MASK;
+			if (reg == rx_req)
+				break;
+
+			time_left--;
+			mdelay(5);
+		} while (time_left);
+
+		if (!time_left) {
+			dev_err(hba->dev, "Invalid Rx Ack value.\n");
+			return -ETIMEDOUT;
+		}
+	}
+
+	return 0;
+}
+
+static int ufs_get_max_pwr_mode(struct ufs_hba *hba,
+				struct ufs_pwr_mode_info *max_pwr_info)
+{
+	struct ufs_versal2_priv *priv = dev_get_priv(hba->dev);
+	u32 lane, reg, rate = 0;
+	int ret = 0;
+
+	/* If it is not a calibrated part, switch PWRMODE to SLOW_MODE */
+	if (!priv->attcompval0 && !priv->attcompval1 &&
+	    !priv->ctlecompval0 && !priv->ctlecompval1) {
+		max_pwr_info->info.pwr_rx = SLOWAUTO_MODE;
+		max_pwr_info->info.pwr_tx = SLOWAUTO_MODE;
+		max_pwr_info->info.gear_rx = UFS_PWM_G1;
+		max_pwr_info->info.gear_tx = UFS_PWM_G1;
+		max_pwr_info->info.lane_tx = 1;
+		max_pwr_info->info.lane_rx = 1;
+		max_pwr_info->info.hs_rate = 0;
+			return 0;
+	}
+
+	if (max_pwr_info->info.pwr_rx == SLOWAUTO_MODE ||
+	    max_pwr_info->info.pwr_tx == SLOWAUTO_MODE)
+		return 0;
+
+	if (max_pwr_info->info.hs_rate == PA_HS_MODE_B)
+		rate = 1;
+
+	/* Select the rate */
+	ret = ufshcd_dme_set(hba, UIC_ARG_MIB(CBRATESEL), rate);
+	if (ret)
+		return ret;
+
+	ret = ufshcd_dme_set(hba, UIC_ARG_MIB(VS_MPHYCFGUPDT), 1);
+	if (ret)
+		return ret;
+
+	ret = ufs_versal2_phy_ratesel(hba, max_pwr_info->info.lane_tx, 1);
+	if (ret)
+		return ret;
+
+	ret = ufs_versal2_phy_ratesel(hba, max_pwr_info->info.lane_tx, 0);
+	if (ret)
+		return ret;
+
+	/* Remove rx_req override */
+	for (lane = 0; lane < max_pwr_info->info.lane_tx; lane++) {
+		ret = ufs_versal2_phy_reg_read(hba, RX_OVRD_IN_1(lane), &reg);
+		if (ret)
+			return ret;
+
+		reg &= ~MPHY_RX_OVRD_EN;
+		ret = ufs_versal2_phy_reg_write(hba, RX_OVRD_IN_1(lane), reg);
+		if (ret)
+			return ret;
+	}
+
+	if (max_pwr_info->info.lane_tx == UFS_LANE_2 &&
+	    max_pwr_info->info.lane_rx == UFS_LANE_2)
+		ret = ufshcd_dme_configure_adapt(hba, max_pwr_info->info.gear_tx,
+						 PA_INITIAL_ADAPT);
+
+	return 0;
+}
+
 static struct ufs_hba_ops ufs_versal2_hba_ops = {
 	.init = ufs_versal2_init,
 	.link_startup_notify = ufs_versal2_link_startup_notify,
 	.hce_enable_notify = ufs_versal2_hce_enable_notify,
+	.get_max_pwr_mode = ufs_get_max_pwr_mode,
 };
 
 static int ufs_versal2_probe(struct udevice *dev)
@@ -440,13 +504,6 @@ static int ufs_versal2_probe(struct udevice *dev)
 	return ret;
 }
 
-static int ufs_versal2_bind(struct udevice *dev)
-{
-	struct udevice *scsi_dev;
-
-	return ufs_scsi_bind(dev, &scsi_dev);
-}
-
 static const struct udevice_id ufs_versal2_ids[] = {
 	{
 		.compatible = "amd,versal2-ufs",
@@ -455,9 +512,9 @@ static const struct udevice_id ufs_versal2_ids[] = {
 };
 
 U_BOOT_DRIVER(ufs_versal2_pltfm) = {
-	.name           = "ufs-versal2-pltfm",
-	.id             = UCLASS_UFS,
-	.of_match       = ufs_versal2_ids,
-	.probe          = ufs_versal2_probe,
-	.bind           = ufs_versal2_bind,
+	.name		= "ufs-versal2-pltfm",
+	.id		= UCLASS_UFS,
+	.of_match	= ufs_versal2_ids,
+	.probe		= ufs_versal2_probe,
+	.priv_auto	= sizeof(struct ufs_versal2_priv),
 };

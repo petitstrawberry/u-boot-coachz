@@ -27,8 +27,22 @@ config DEPRECATED
 	  code that relies on deprecated features that will be removed and
 	  the conversion deadline has passed.
 
+config COMPILE_TEST
+	bool "Compile also drivers which will not load"
+	help
+	  Some drivers can be compiled on a different platform than they are
+	  intended to be run on. Despite they cannot be loaded there (or even
+	  when they load they cannot be used due to missing HW support),
+	  developers still, opposing to distributors, might want to build such
+	  drivers to compile-test them.
+
+	  If you are a developer and want to build everything available, say Y
+	  here. If you are a user/distributor, say N here to exclude useless
+	  drivers to be distributed.
+
 config WERROR
 	bool "Compile U-Boot with warnings as errors"
+	default COMPILE_TEST
 	help
 	  A U-Boot build should not cause any compiler warnings, and this
 	  enables the '-Werror' flag to enforce that rule.
@@ -126,6 +140,15 @@ config SPL_OPTIMIZE_INLINING
 	  do what it thinks is best, which is desirable in some cases for size
 	  reasons.
 
+config TPL_OPTIMIZE_INLINING
+	bool "Allow compiler to uninline functions marked 'inline' in TPL"
+	depends on TPL
+	help
+	  This option determines if U-Boot forces gcc to inline the functions
+	  developers have marked 'inline'. Doing so takes away freedom from gcc to
+	  do what it thinks is best, which is desirable in some cases for size
+	  reasons.
+
 config ARCH_SUPPORTS_LTO
 	bool
 
@@ -149,15 +172,6 @@ config LTO
 
 	  If unsure, say n.
 
-config TPL_OPTIMIZE_INLINING
-	bool "Allow compiler to uninline functions marked 'inline' in TPL"
-	depends on TPL
-	help
-	  This option determines if U-Boot forces gcc to inline the functions
-	  developers have marked 'inline'. Doing so takes away freedom from gcc to
-	  do what it thinks is best, which is desirable in some cases for size
-	  reasons.
-
 config CC_COVERAGE
 	bool "Enable code coverage analysis"
 	depends on SANDBOX
@@ -179,7 +193,7 @@ config FUZZ
 	select ASAN
 	help
 	  Enables the fuzzing infrastructure to generate fuzzing data and run
-          fuzz tests.
+	  fuzz tests.
 
 config CC_HAS_ASM_INLINE
 	def_bool $(success,echo 'void foo(void) { asm inline (""); }' | $(CC) -x c - -c -o /dev/null)
@@ -285,8 +299,8 @@ config SYS_MALLOC_F_LEN
 			 ROCKCHIP_RV1108
 	default 0x600 if ARCH_ZYNQMP_R5 || ARCH_ZYNQMP
 	default 0x800 if ARCH_ZYNQ || ROCKCHIP_RK3128 || ROCKCHIP_RK3188 || \
-			 ROCKCHIP_RK322X || X86
-	default 0x1000 if ARCH_MESON || ARCH_BMIPS || ARCH_MTMIPS
+			 ROCKCHIP_RK322X
+	default 0x1000 if ARCH_MESON || ARCH_BMIPS || ARCH_MTMIPS || X86
 	default 0x1800 if ARCH_TEGRA
 	default 0x4000 if SANDBOX || RISCV || ARCH_APPLE || ROCKCHIP_RK3368 || \
 			  ROCKCHIP_RK3399
@@ -294,11 +308,11 @@ config SYS_MALLOC_F_LEN
 	default 0x10000 if ARCH_IMX8 || ARCH_IMX8M
 	default 0x2000
 	help
-		Size of the malloc() pool for use before relocation. If
-		this is defined, then a very simple malloc() implementation
-		will become available before relocation. The address is just
-		below the global data, and the stack is moved down to make
-		space.
+	  Size of the malloc() pool for use before relocation. If
+	  this is defined, then a very simple malloc() implementation
+	  will become available before relocation. The address is just
+	  below the global data, and the stack is moved down to make
+	  space.
 
 		This feature allocates regions with increasing addresses
 		within the region. calloc() is supported, but realloc()
@@ -309,7 +323,7 @@ config SYS_MALLOC_F_LEN
 config SYS_MALLOC_LEN
 	hex "Define memory for Dynamic allocation"
 	default 0x4000000 if SANDBOX
-	default 0x2000000 if ARCH_ROCKCHIP || ARCH_OMAP2PLUS || ARCH_MESON
+	default 0x2000000 if ARCH_ROCKCHIP || ARCH_OMAP2PLUS || ARCH_MESON || ARCH_K3
 	default 0x200000 if ARCH_BMIPS || X86
 	default 0x4020000 if SUNXI_MINIMUM_DRAM_MB >= 256
 	default 0x220000 if SUNXI_MINIMUM_DRAM_MB >= 64
@@ -406,7 +420,7 @@ menuconfig EXPERT
 	  Use this only if you really know what you are doing.
 
 if EXPERT
-	config SYS_MALLOC_CLEAR_ON_INIT
+config SYS_MALLOC_CLEAR_ON_INIT
 	bool "Init with zeros the memory reserved for malloc (slow)"
 	default y
 	help
@@ -454,11 +468,53 @@ config TOOLS_DEBUG
 	  it is possible to set breakpoints on particular lines, single-step
 	  debug through the source code, etc.
 
+config SKIP_EARLY_DM
+	bool "Skips initialising device model pre-relocation"
+	help
+	  Enable this option to skip scanning and probing devices prior to
+	  U-Boot relocation (during board_f). Unless console support is disabled
+	  a serial port is still required, however this can be found through
+	  /chosen/stdout-path in FDT. If the serial port relies on other devices
+	  like clocks these will also be bound and probed on demand.
+
+	  This can speed up time to interactive console by about 50%, particularly
+	  when combined with OF_LIVE.
+
 config SKIP_RELOCATE
 	bool "Skips relocation of U-Boot to end of RAM"
 	help
 	  Skips relocation of U-Boot allowing for systems that have extremely
 	  limited RAM to run U-Boot.
+
+config SKIP_RELOCATE_CODE
+	bool
+	help
+	  Skips relocation of U-Boot code to the end of RAM, but still does
+	  relocate data to the end of RAM. This is mainly meant to relocate
+	  data to read-write portion of the RAM, while the code remains in
+	  read-only portion of the RAM from which it is allowed to execute.
+	  This split configuration is present on various secure cores.
+
+config SKIP_RELOCATE_CODE_DATA_OFFSET
+	hex
+	default 0x0
+	depends on SKIP_RELOCATE_CODE
+	help
+	  Offset of the read-write memory which contains data, from read-only
+	  memory which contains executable text.
+
+config RELOC_ADDR_TOP
+	bool "Relocate to the topmost memory address"
+	help
+	  When U-Boot relocates, it chooses the end of the first memory bank.
+	  Enable this if you have multiple banks and want U-Boot to relocate
+	  to the topmost memory address. This will use the information of the
+	  board memory banks configured with dram_init_banksize() to calculate
+	  the relocation address.
+	  Use this if you are certain all of the devices can access memory
+	  above the 32bit boundary. Devices that can only DMA below 4GiB will
+	  misbehave because their buffers may be allocated above the 32-bit
+	  boundary after relocation.
 
 endif # EXPERT
 
@@ -497,6 +553,7 @@ config SPL_IMAGE
 
 config REMAKE_ELF
 	bool "Recreate an ELF image from raw U-Boot binary"
+	depends on !COMPILE_TEST
 	help
 	  Enable this to recreate an ELF image (u-boot.elf) from the raw
 	  U-Boot binary (u-boot.bin), which may already have been statically
@@ -504,13 +561,14 @@ config REMAKE_ELF
 
 config BUILD_TARGET
 	string "Build target special images"
-	default "u-boot-elf.srec" if RCAR_64
+	default "u-boot-elf.shdr" if RCAR_64 && RCAR_64_RSIP
+	default "u-boot-elf.srec" if RCAR_64 && !RCAR_64_RSIP
 	default "u-boot-with-spl.bin" if ARCH_AT91 && SPL_NAND_SUPPORT
 	default "u-boot-with-spl.bin" if MPC85xx && !E500MC && !E5500 && !E6500 && SPL
-	default "u-boot-with-spl.imx" if ARCH_MX6 && SPL
+	default "u-boot-with-spl.imx" if (ARCH_MX6 || ARCH_MX7) && SPL
 	default "u-boot-with-spl.kwb" if ARMADA_32BIT && SPL
-	default "u-boot-with-spl.sfp" if TARGET_SOCFPGA_ARRIA10
-	default "u-boot-with-spl.sfp" if TARGET_SOCFPGA_GEN5
+	default "u-boot-with-spl.sfp" if ARCH_SOCFPGA_ARRIA10
+	default "u-boot-with-spl.sfp" if ARCH_SOCFPGA_GEN5
 	default "u-boot.itb" if !BINMAN && SPL_LOAD_FIT && (ARCH_ROCKCHIP || \
 				RISCV || ARCH_ZYNQMP)
 	default "u-boot.kwb" if (ARCH_KIRKWOOD || ARMADA_32BIT) && !SPL
@@ -523,6 +581,7 @@ config BUILD_TARGET
 
 config HAS_BOARD_SIZE_LIMIT
 	bool "Define a maximum size for the U-Boot image"
+	depends on !COMPILE_TEST
 	default y if RCAR_32 || RCAR_64
 	help
 	  In some cases, we need to enforce a hard limit on how big the U-Boot
@@ -537,10 +596,11 @@ config BOARD_SIZE_LIMIT
 	  Maximum size of the U-Boot image. When defined, the build system
 	  checks that the actual size does not exceed it.  This does not
 	  include SPL nor TPL, on platforms that use that functionality, they
-	  have a separate option to restict size.
+	  have separate options to restrict size.
 
 config SYS_CUSTOM_LDSCRIPT
 	bool "Use a custom location for the U-Boot linker script"
+	depends on !COMPILE_TEST
 	help
 	  Normally when linking U-Boot we will look in the board directory,
 	  the CPU directory and finally the "cpu" directory of the architecture
@@ -598,9 +658,11 @@ config STACK_SIZE
 	default 0x4000 if ARCH_STM32
 	default 0x1000000
 	help
-	  Define Max stack size that can be used by U-Boot. This value is used
-	  by the UEFI sub-system. On some boards initrd_high is calculated as
-	  base stack pointer minus this stack size.
+	  Define Max stack size that can be used by U-Boot. The UEFI sub-system
+	  considers this value when setting up the memory map. The UEFI
+	  specification requires 128 KiB or more of available stack space. On
+	  some boards initrd_high is calculated as base stack pointer minus this
+	  stack size.
 
 config SYS_MEM_TOP_HIDE
 	hex "Exclude some memory from U-Boot / OS information"
@@ -704,6 +766,7 @@ config TPL_SYS_MONITOR_BASE
 
 config DYNAMIC_SYS_CLK_FREQ
 	bool "Determine CPU clock frequency at run-time"
+	depends on !COMPILE_TEST
 	help
 	  Implement a get_board_sys_clk function that will determine the CPU
 	  clock frequency at run time, rather than define it statically.
@@ -754,41 +817,7 @@ source "dts/Kconfig"
 
 source "env/Kconfig"
 
-menu "Networking"
-
-choice
-	prompt "Networking stack"
-	default NET
-
-config NO_NET
-	bool "No networking support"
-	help
-	  Do not include networking support
-
-config NET
-	bool "Legacy U-Boot networking stack"
-	imply NETDEVICES
-	help
-	  Include networking support with U-Boot's internal implementation of
-	  the TCP/IP protocol stack.
-
-config NET_LWIP
-	bool "Use lwIP for networking stack"
-	imply NETDEVICES
-	help
-	  Include networking support based on the lwIP (lightweight IP)
-	  TCP/IP stack (https://nongnu.org/lwip). This is a replacement for
-	  the default U-Boot network stack and applications located in net/
-	  and enabled via CONFIG_NET as well as other pieces of code that
-	  depend on CONFIG_NET (such as cmd/net.c enabled via CONFIG_CMD_NET).
-	  Therefore the two symbols CONFIG_NET and CONFIG_NET_LWIP are mutually
-	  exclusive.
-
-endchoice
-
 source "net/Kconfig"
-
-endmenu
 
 source "drivers/Kconfig"
 

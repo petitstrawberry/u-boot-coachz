@@ -5,8 +5,6 @@
  * Copyright (C) 2019 Marek Vasut <marek.vasut@gmail.com>
  */
 
-#include "r8a77980-u-boot.dtsi"
-
 / {
 	aliases {
 		spi0 = &rpc;
@@ -14,7 +12,7 @@
 
 	sysinfo {
 		compatible = "renesas,rcar-sysinfo";
-		i2c-eeprom = <&sysinfo_eeprom>;
+		i2c-eeprom = <&{i2c0/eeprom@50}>;
 		bootph-all;
 	};
 };
@@ -22,18 +20,13 @@
 &i2c0 {
 	bootph-all;
 
-	sysinfo_eeprom: eeprom@50 {
-		compatible = "rohm,br24t01", "atmel,24c01";
-		reg = <0x50>;
-		pagesize = <8>;
+	eeprom@50 {
 		bootph-all;
 	};
 };
 
 &rpc {
-	num-cs = <1>;
 	status = "okay";
-	spi-max-frequency = <50000000>;
 	#address-cells = <1>;
 	#size-cells = <0>;
 

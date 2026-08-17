@@ -17,7 +17,9 @@ obj-$(CONFIG_$(PHASE_)DRIVERS_MISC) += misc/
 obj-$(CONFIG_$(PHASE_)SYSRESET) += sysreset/
 obj-$(CONFIG_$(PHASE_)FIRMWARE) +=firmware/
 obj-$(CONFIG_$(PHASE_)I2C) += i2c/
+obj-$(CONFIG_$(PHASE_)I3C) += i3c/
 obj-$(CONFIG_$(PHASE_)INPUT) += input/
+obj-$(CONFIG_$(PHASE_)INTERCONNECT) += interconnect/
 obj-$(CONFIG_$(PHASE_)LED) += led/
 obj-$(CONFIG_$(PHASE_)MMC) += mmc/
 obj-y += mtd/
@@ -25,6 +27,7 @@ obj-$(CONFIG_MULTIPLEXER) += mux/
 obj-$(CONFIG_$(PHASE_)ETH) += net/
 obj-$(CONFIG_$(PHASE_)PCH) += pch/
 obj-$(CONFIG_$(PHASE_)PCI) += pci/
+obj-$(CONFIG_$(PHASE_)PCI_ENDPOINT) += pci_endpoint/
 obj-$(CONFIG_$(PHASE_)PHY) += phy/
 obj-$(CONFIG_$(PHASE_)PINCTRL) += pinctrl/
 obj-$(CONFIG_$(PHASE_)POWER) += power/
@@ -63,13 +66,15 @@ obj-$(CONFIG_DRAM_SUN20I_D1) += ram/
 obj-$(CONFIG_SPL_DM_RESET) += reset/
 obj-$(CONFIG_SPL_MUSB_NEW) += usb/musb-new/
 obj-$(CONFIG_SPL_USB_GADGET) += usb/gadget/
-obj-$(CONFIG_SPL_USB_GADGET) += usb/common/
+obj-$(CONFIG_SPL_DM_USB) += usb/common/
+obj-$(CONFIG_SPL_USB_MTU3) += usb/mtu3/
 obj-$(CONFIG_SPL_USB_GADGET) += usb/gadget/udc/
 obj-$(CONFIG_SPL_WATCHDOG) += watchdog/
 obj-$(CONFIG_SPL_USB_HOST) += usb/host/
 obj-$(CONFIG_SPL_SATA) += ata/ scsi/
 obj-$(CONFIG_SPL_LEGACY_BLOCK) += block/
 obj-$(CONFIG_SPL_THERMAL) += thermal/
+obj-$(CONFIG_SPL_UFS_SUPPORT) += scsi/ ufs/
 
 endif
 endif

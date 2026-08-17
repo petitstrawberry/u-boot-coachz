@@ -24,7 +24,8 @@ int dram_init(void)
 {
 	int ret = fdtdec_setup_mem_size_base();
 
-	if (current_el() == 3 && gd->ram_base == 0x48000000) {
+	if (IS_ENABLED(CONFIG_ARM64) && current_el() == 3 &&
+	    gd->ram_base == 0x48000000) {
 		/*
 		 * If this U-Boot runs in EL3, make the bottom 128 MiB
 		 * available for loading of follow up firmware blobs.
@@ -36,27 +37,31 @@ int dram_init(void)
 	return ret;
 }
 
+__weak void renesas_dram_init_banksize(void) { }
+
 int dram_init_banksize(void)
 {
 	int bank;
 
 	fdtdec_setup_memory_banksize();
 
-	if (current_el() != 3)
+	if (IS_ENABLED(CONFIG_ARM64) && current_el() != 3)
 		return 0;
 
 	for (bank = 0; bank < CONFIG_NR_DRAM_BANKS; bank++) {
-		if (gd->bd->bi_dram[bank].start != 0x48000000)
+		if (gd->dram[bank].start != 0x48000000)
 			continue;
 
 		/*
 		 * If this U-Boot runs in EL3, make the bottom 128 MiB
 		 * available for loading of follow up firmware blobs.
 		 */
-		gd->bd->bi_dram[bank].start -= 0x8000000;
-		gd->bd->bi_dram[bank].size += 0x8000000;
+		gd->dram[bank].start -= 0x8000000;
+		gd->dram[bank].size += 0x8000000;
 		break;
 	}
+
+	renesas_dram_init_banksize();
 
 	return 0;
 }

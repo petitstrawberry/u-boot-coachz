@@ -14,10 +14,13 @@
 #include <dm.h>
 #include <efi.h>
 #include <efi_loader.h>
+#include <env.h>
 #include <expo.h>
 #include <mapmem.h>
 #ifdef CONFIG_SANDBOX
 #include <asm/test.h>
+#include <sandbox_host.h>
+#include <os.h>
 #endif
 #include <dm/device-internal.h>
 #include <dm/lists.h>
@@ -30,6 +33,7 @@ DECLARE_GLOBAL_DATA_PTR;
 
 extern U_BOOT_DRIVER(bootmeth_android);
 extern U_BOOT_DRIVER(bootmeth_cros);
+extern U_BOOT_DRIVER(bootmeth_rauc);
 extern U_BOOT_DRIVER(bootmeth_2script);
 
 /* Use this as the vendor for EFI to tell the app to exit boot services */
@@ -306,6 +310,10 @@ static int bootflow_iter(struct unit_test_state *uts)
 	ut_asserteq(0, iter.max_part);
 	ut_asserteq_str("extlinux", iter.method->name);
 	ut_asserteq(0, bflow.err);
+	ut_assert(!iter.doing_global);
+	ut_assert(!iter.have_global);
+	ut_asserteq(-1, iter.first_glob_method);
+	ut_asserteq(BIT(0), iter.methods_done);
 
 	/*
 	 * This shows MEDIA even though there is none, since in
@@ -314,6 +322,7 @@ static int bootflow_iter(struct unit_test_state *uts)
 	 * know.
 	 */
 	ut_asserteq(BOOTFLOWST_MEDIA, bflow.state);
+	bootflow_free(&bflow);
 
 	ut_asserteq(-EPROTONOSUPPORT, bootflow_scan_next(&iter, &bflow));
 	ut_asserteq(2, iter.num_methods);
@@ -323,6 +332,7 @@ static int bootflow_iter(struct unit_test_state *uts)
 	ut_asserteq_str("efi", iter.method->name);
 	ut_asserteq(0, bflow.err);
 	ut_asserteq(BOOTFLOWST_MEDIA, bflow.state);
+	ut_asserteq(BIT(0) | BIT(1), iter.methods_done);
 	bootflow_free(&bflow);
 
 	/* The next device is mmc1.bootdev - at first we use the whole device */
@@ -334,6 +344,7 @@ static int bootflow_iter(struct unit_test_state *uts)
 	ut_asserteq_str("extlinux", iter.method->name);
 	ut_asserteq(0, bflow.err);
 	ut_asserteq(BOOTFLOWST_MEDIA, bflow.state);
+	ut_asserteq(BIT(0) | BIT(1), iter.methods_done);
 	bootflow_free(&bflow);
 
 	ut_asserteq(-ENOENT, bootflow_scan_next(&iter, &bflow));
@@ -344,9 +355,10 @@ static int bootflow_iter(struct unit_test_state *uts)
 	ut_asserteq_str("efi", iter.method->name);
 	ut_asserteq(0, bflow.err);
 	ut_asserteq(BOOTFLOWST_MEDIA, bflow.state);
+	ut_asserteq(BIT(0) | BIT(1), iter.methods_done);
 	bootflow_free(&bflow);
 
-	/* Then more to partition 1 where we find something */
+	/* Then move to partition 1 where we find something */
 	ut_assertok(bootflow_scan_next(&iter, &bflow));
 	ut_asserteq(2, iter.num_methods);
 	ut_asserteq(0, iter.cur_method);
@@ -376,6 +388,7 @@ static int bootflow_iter(struct unit_test_state *uts)
 	ut_asserteq_str("extlinux", iter.method->name);
 	ut_asserteq(0, bflow.err);
 	ut_asserteq(BOOTFLOWST_MEDIA, bflow.state);
+	ut_asserteq(BIT(0) | BIT(1), iter.methods_done);
 	bootflow_free(&bflow);
 
 	bootflow_iter_uninit(&iter);
@@ -387,6 +400,50 @@ static int bootflow_iter(struct unit_test_state *uts)
 BOOTSTD_TEST(bootflow_iter, UTF_DM | UTF_SCAN_FDT | UTF_CONSOLE);
 
 #if defined(CONFIG_SANDBOX) && defined(CONFIG_BOOTMETH_GLOBAL)
+
+/* Check iterating through available bootflows to test global bootmeths */
+static int bootflow_iter_glob(struct unit_test_state *uts)
+{
+	struct bootflow_iter iter;
+	struct bootflow bflow;
+
+	bootstd_clear_glob();
+
+	/* we should get the global bootmeth initially */
+	ut_asserteq(-EINVAL,
+		    bootflow_scan_first(NULL, NULL, &iter, BOOTFLOWIF_ALL |
+					BOOTFLOWIF_SHOW, &bflow));
+	ut_asserteq(3, iter.num_methods);
+	ut_assert(iter.doing_global);
+	ut_assert(iter.have_global);
+	ut_asserteq(2, iter.first_glob_method);
+
+	ut_asserteq(2, iter.cur_method);
+	ut_asserteq(0, iter.part);
+	ut_asserteq(0, iter.max_part);
+	ut_asserteq_str("firmware0", iter.method->name);
+	ut_asserteq(0, bflow.err);
+	bootflow_free(&bflow);
+
+	/* next we should get the first non-global bootmeth */
+	ut_asserteq(-EPROTONOSUPPORT, bootflow_scan_next(&iter, &bflow));
+
+	/* at this point the global bootmeths are stranded above num_methods */
+	ut_asserteq(3, iter.num_methods);
+	ut_asserteq(2, iter.first_glob_method);
+	ut_assert(!iter.doing_global);
+	ut_assert(iter.have_global);
+
+	ut_asserteq(0, iter.cur_method);
+	ut_asserteq(0, iter.part);
+	ut_asserteq(0, iter.max_part);
+	ut_asserteq_str("extlinux", iter.method->name);
+	ut_asserteq(0, bflow.err);
+
+	return 0;
+}
+BOOTSTD_TEST(bootflow_iter_glob, UTF_DM | UTF_SCAN_FDT);
+
 /* Check using the system bootdev */
 static int bootflow_system(struct unit_test_state *uts)
 {
@@ -400,11 +457,11 @@ static int bootflow_system(struct unit_test_state *uts)
 	ut_assertok(device_probe(dev));
 	sandbox_set_fake_efi_mgr_dev(dev, true);
 
-	/* We should get a single 'bootmgr' method right at the end */
+	/* We should get a single 'bootmgr' method at the end */
 	bootstd_clear_glob();
 	ut_assertok(run_command("bootflow scan -lH", 0));
 	ut_assert_skip_to_line(
-		"  0  efi_mgr      ready   (none)       0  <NULL>                    ");
+		"  1  efi_mgr      ready   (none)       0  <NULL>                    ");
 	ut_assert_skip_to_line("No more bootdevs");
 	ut_assert_skip_to_line("(2 bootflows, 2 valid)");
 	ut_assert_console_end();
@@ -437,7 +494,12 @@ static int bootflow_iter_disable(struct unit_test_state *uts)
 	/* Try to boot the bootmgr flow, which will fail */
 	console_record_reset_enable();
 	ut_assertok(bootflow_scan_first(NULL, NULL, &iter, 0, &bflow));
-	ut_asserteq(3, iter.num_methods);
+
+	/* at this point the global bootmeths are stranded above num_methods */
+	ut_asserteq(4, iter.num_methods);
+	ut_assert(!iter.doing_global);
+	ut_assert(iter.have_global);
+	ut_asserteq(3, iter.first_glob_method);
 	ut_asserteq_str("sandbox", iter.method->name);
 	ut_assertok(inject_response(uts));
 	ut_asserteq(-ENOTSUPP, bootflow_run_boot(&iter, &bflow));
@@ -446,9 +508,13 @@ static int bootflow_iter_disable(struct unit_test_state *uts)
 	ut_assert_console_end();
 
 	/* Check that the sandbox bootmeth has been removed */
-	ut_asserteq(2, iter.num_methods);
+	ut_asserteq(3, iter.num_methods);
+
 	for (i = 0; i < iter.num_methods; i++)
 		ut_assert(strcmp("sandbox", iter.method_order[i]->name));
+
+	/* the first global bootmeth is now down one place in the list */
+	ut_asserteq(2, iter.first_glob_method);
 
 	return 0;
 }
@@ -798,7 +864,7 @@ static int bootflow_cmd_hunt_single(struct unit_test_state *uts)
 	ut_assert_console_end();
 
 	/* check that the hunter was used */
-	ut_asserteq(BIT(MMC_HUNTER) | BIT(1), std->hunters_used);
+	ut_asserteq(BIT(MMC_HUNTER), std->hunters_used);
 
 	return 0;
 }
@@ -820,14 +886,12 @@ static int bootflow_cmd_hunt_label(struct unit_test_state *uts)
 	ut_assertok(run_command("bootflow scan -l mmc", 0));
 
 	/* check that the hunter was used */
-	ut_asserteq(BIT(MMC_HUNTER) | BIT(1), std->hunters_used);
+	ut_asserteq(BIT(MMC_HUNTER), std->hunters_used);
 
 	/* check that we got the mmc1 bootflow */
 	ut_assert_nextline("Scanning for bootflows with label 'mmc'");
 	ut_assert_nextlinen("Seq");
 	ut_assert_nextlinen("---");
-	ut_assert_nextline("Hunting with: simple_bus");
-	ut_assert_nextline("Found 2 extension board(s).");
 	ut_assert_nextline("Hunting with: mmc");
 	ut_assert_nextline("Scanning bootdev 'mmc2.bootdev':");
 	ut_assert_nextline("Scanning bootdev 'mmc1.bootdev':");
@@ -857,7 +921,7 @@ static int check_font(struct unit_test_state *uts, struct scene *scn, uint id,
 	txt = scene_obj_find(scn, id, SCENEOBJT_TEXT);
 	ut_assertnonnull(txt);
 
-	ut_asserteq(font_size, txt->font_size);
+	ut_asserteq(font_size, txt->gen.font_size);
 
 	return 0;
 }
@@ -877,9 +941,10 @@ static int bootflow_menu_theme(struct unit_test_state *uts)
 	ut_assertok(scan_mmc4_bootdev(uts));
 
 	ut_assertok(bootflow_menu_new(&exp));
+	ut_assertok(bootflow_menu_add_all(exp));
 	node = ofnode_path("/bootstd/theme");
 	ut_assert(ofnode_valid(node));
-	ut_assertok(bootflow_menu_apply_theme(exp, node));
+	ut_assertok(expo_apply_theme(exp, node));
 
 	scn = expo_lookup_scene_id(exp, MAIN);
 	ut_assertnonnull(scn);
@@ -890,8 +955,8 @@ static int bootflow_menu_theme(struct unit_test_state *uts)
 	 *
 	 * Check both menu items, since there are two bootflows
 	 */
-	ut_assertok(check_font(uts, scn, OBJ_PROMPT, font_size));
-	ut_assertok(check_font(uts, scn, OBJ_POINTER, font_size));
+	for (i = OBJ_PROMPT1A; i <= OBJ_AUTOBOOT; i++)
+		ut_assertok(check_font(uts, scn, i, font_size));
 	for (i = 0; i < 2; i++) {
 		ut_assertok(check_font(uts, scn, ITEM_DESC + i, font_size));
 		ut_assertok(check_font(uts, scn, ITEM_KEY + i, font_size));
@@ -1330,6 +1395,62 @@ static int bootflow_efi(struct unit_test_state *uts)
 }
 BOOTSTD_TEST(bootflow_efi, UTF_CONSOLE);
 
+/* Test RAUC bootmeth */
+static int bootflow_rauc(struct unit_test_state *uts)
+{
+	const char *mmc_dev = "mmc10";
+	struct bootstd_priv *std;
+	struct udevice *bootstd;
+	static const char *order[] = {NULL, NULL};
+	const char **old_order;
+	ofnode root;
+	ofnode node;
+
+	order[0] = mmc_dev;
+
+	if (!CONFIG_IS_ENABLED(BOOTMETH_RAUC))
+		return -EAGAIN;
+
+	/* Enable the requested mmc node since we need a different bootflow */
+	root = oftree_root(oftree_default());
+	node = ofnode_find_subnode(root, mmc_dev);
+	ut_assert(ofnode_valid(node));
+	ut_assertok(lists_bind_fdt(gd->dm_root, node, NULL, NULL, false));
+
+	/* Enable the rauc bootmeth */
+	ut_assertok(uclass_first_device_err(UCLASS_BOOTSTD, &bootstd));
+	ut_assertok(device_bind(bootstd, DM_DRIVER_REF(bootmeth_rauc),
+				"rauc", 0, ofnode_null(), NULL));
+
+	/* Change the device and bootmeth order */
+	std = dev_get_priv(bootstd);
+	old_order = std->bootdev_order;
+	std->bootdev_order = order;
+
+	ut_assertok(bootmeth_set_order("rauc"));
+
+	/* Run scan and list */
+	ut_assertok(run_command("bootflow scan", 0));
+	ut_assert_console_end();
+
+	ut_assertok(run_command("bootflow list", 0));
+
+	ut_assert_nextlinen("Showing all");
+	ut_assert_nextlinen("Seq");
+	ut_assert_nextlinen("---");
+	ut_assert_nextlinen("  0  rauc         ready   mmc          0  mmc10.bootdev.whole      ");
+	ut_assert_nextlinen("---");
+	ut_assert_skip_to_line("(1 bootflow, 1 valid)");
+
+	ut_assert_console_end();
+
+	/* Restore the order used by the device tree */
+	std->bootdev_order = old_order;
+
+	return 0;
+}
+BOOTSTD_TEST(bootflow_rauc, UTF_CONSOLE | UTF_DM | UTF_SCAN_FDT);
+
 /* Check 'bootflow scan' provides a list of images */
 static int bootstd_images(struct unit_test_state *uts)
 {
@@ -1413,3 +1534,48 @@ static int bootstd_images(struct unit_test_state *uts)
 	return 0;
 }
 BOOTSTD_TEST(bootstd_images, UTF_CONSOLE);
+
+#if defined(CONFIG_SANDBOX) && defined(CONFIG_BOOTMETH_GLOBAL)
+/*
+ * Check that bootdev scanning does not stop if higher-priority bootdevs
+ * are failed to be hunted.
+ */
+static int bootdev_hunt_fallthrough(struct unit_test_state *uts)
+{
+	struct bootstd_priv *std;
+	struct udevice *dev;
+
+	ut_assertok(bootstd_get_priv(&std));
+	bootstd_test_drop_bootdev_order(uts);
+	test_set_skip_delays(true);
+	bootstd_reset_usb();
+	console_record_reset_enable();
+
+	/*
+	 * Create a sandbox block device (BOOTDEVP_4_SCAN_FAST) and mark it as
+	 * broken so that bootdev_hunt_prio() returns an error.
+	 */
+	ut_asserteq(0, uclass_id_count(UCLASS_HOST));
+	ut_assertok(host_create_device("test", true, DEFAULT_BLKSZ, &dev));
+	ut_assertok(host_set_flags_by_label("test", HOST_FLAG_BROKEN));
+	ut_asserteq(1, uclass_id_count(UCLASS_HOST));
+
+	/*
+	 * Scan with hunting.
+	 * The sandbox hunter at priority 4 must fail, but the USB hunter at
+	 * priority 5 must still be reached.
+	 */
+	ut_assertok(run_command("bootflow scan -l", 0));
+
+	ut_assert(!(std->hunters_used & BIT(HOST_HUNTER)));
+	ut_assert_skip_to_line("Hunting with: host");
+
+	/* USB was hunted despite the sandbox hunter failure */
+	ut_assert(std->hunters_used & BIT(USB_HUNTER));
+	ut_assert_skip_to_line("Bus usb@1: 5 USB Device(s) found");
+
+	return 0;
+}
+BOOTSTD_TEST(bootdev_hunt_fallthrough,
+             UTF_DM | UTF_SCAN_FDT | UTF_SF_BOOTDEV | UTF_CONSOLE);
+#endif /* CONFIG_SANDBOX */

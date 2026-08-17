@@ -9,10 +9,10 @@ config PCI_ENDPOINT
 	bool "PCI Endpoint Support"
 	depends on DM
 	help
-	   Enable this configuration option to support configurable PCI
-	   endpoints. This should be enabled if the platform has a PCI
-	   controllers that can operate in endpoint mode (as a device
-	   connected to PCI host or bridge).
+	  Enable this configuration option to support configurable PCI
+	  endpoints. This should be enabled if the platform has a PCI
+	  controllers that can operate in endpoint mode (as a device
+	  connected to PCI host or bridge).
 
 config PCIE_CADENCE_EP
 	bool "Cadence PCIe endpoint controller"
@@ -21,6 +21,12 @@ config PCIE_CADENCE_EP
 	  Say Y here if you want to support the Cadence PCIe controller in
 	  endpoint mode. This PCIe controller may be embedded into many
 	  different vendors SoCs.
+
+config PCIE_CDNS_TI_EP
+	bool "TI K3 PCIe EP support"
+	help
+	  Say Y here to enable support for the Canence PCIe Controller
+	  in Endpoint Mode on TI's K3 Socs.
 
 config PCI_SANDBOX_EP
 	bool "Sandbox PCIe endpoint controller"

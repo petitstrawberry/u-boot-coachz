@@ -8,15 +8,12 @@
 #include <asm/arch/clock.h>
 #include <asm/arch/imx-regs.h>
 #include <asm/arch/sys_proto.h>
-#include <asm/global_data.h>
 #include <asm/io.h>
 #include <div64.h>
 #include <errno.h>
 #include <linux/bitops.h>
 #include <linux/delay.h>
 #include <phy.h>
-
-DECLARE_GLOBAL_DATA_PTR;
 
 static struct anamix_pll *ana_pll = (struct anamix_pll *)ANATOP_BASE_ADDR;
 
@@ -55,16 +52,16 @@ int enable_i2c_clk(unsigned char enable, unsigned i2c_num)
 static struct imx_int_pll_rate_table imx8mm_fracpll_tbl[] = {
 	PLL_1443X_RATE(1000000000U, 250, 3, 1, 0),
 	PLL_1443X_RATE(933000000U, 311, 4, 1, 0),
-	PLL_1443X_RATE(900000000U, 300, 8, 0, 0),
-	PLL_1443X_RATE(800000000U, 300, 9, 0, 0),
-	PLL_1443X_RATE(750000000U, 250, 8, 0, 0),
+	PLL_1443X_RATE(900000000U, 300, 2, 2, 0),
+	PLL_1443X_RATE(800000000U, 200, 3, 1, 0),
+	PLL_1443X_RATE(750000000U, 250, 2, 2, 0),
 	PLL_1443X_RATE(650000000U, 325, 3, 2, 0),
 	PLL_1443X_RATE(600000000U, 300, 3, 2, 0),
 	PLL_1443X_RATE(594000000U, 99, 1, 2, 0),
-	PLL_1443X_RATE(400000000U, 300, 9, 1, 0),
-	PLL_1443X_RATE(266000000U, 400, 9, 2, 0),
+	PLL_1443X_RATE(400000000U, 400, 3, 3, 0),
+	PLL_1443X_RATE(266000000U, 266, 3, 3, 0),
 	PLL_1443X_RATE(167000000U, 334, 3, 4, 0),
-	PLL_1443X_RATE(100000000U, 300, 9, 3, 0),
+	PLL_1443X_RATE(100000000U, 200, 3, 4, 0),
 };
 
 static int fracpll_configure(enum pll_clocks pll, u32 freq)

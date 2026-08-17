@@ -22,15 +22,23 @@ DECLARE_GLOBAL_DATA_PTR;
 
 void hw_watchdog_reset(void);
 
-struct hlist_head *cyclic_get_list(void)
+static bool cyclic_is_registered(const struct cyclic_info *cyclic)
 {
-	/* Silence "discards 'volatile' qualifier" warning. */
-	return (struct hlist_head *)&gd->cyclic_list;
+	const struct cyclic_info *c;
+
+	hlist_for_each_entry(c, &gd->cyclic_list, list) {
+		if (c == cyclic)
+			return true;
+	}
+
+	return false;
 }
 
 void cyclic_register(struct cyclic_info *cyclic, cyclic_func_t func,
-		     uint64_t delay_us, const char *name)
+		     u64 delay_us, const char *name)
 {
+	cyclic_unregister(cyclic);
+
 	memset(cyclic, 0, sizeof(*cyclic));
 
 	/* Store values in struct */
@@ -38,11 +46,14 @@ void cyclic_register(struct cyclic_info *cyclic, cyclic_func_t func,
 	cyclic->name = name;
 	cyclic->delay_us = delay_us;
 	cyclic->start_time_us = get_timer_us(0);
-	hlist_add_head(&cyclic->list, cyclic_get_list());
+	hlist_add_head(&cyclic->list, &gd->cyclic_list);
 }
 
 void cyclic_unregister(struct cyclic_info *cyclic)
 {
+	if (!cyclic_is_registered(cyclic))
+		return;
+
 	hlist_del(&cyclic->list);
 }
 
@@ -50,26 +61,41 @@ static void cyclic_run(void)
 {
 	struct cyclic_info *cyclic;
 	struct hlist_node *tmp;
-	uint64_t now, cpu_time;
+	u64 now, after, cpu_time;
+
+	/*
+	 * Nothing to do if the list is empty. Also, schedule() can be
+	 * called before timer infrastructure is ready, in which case
+	 * calling get_timer_us() before the (empty) loop could cause
+	 * a divide-by-0 or otherwise crash the system. No clients
+	 * should be registered before the timer infrastructure is up,
+	 * so the check for the list being empty should be
+	 * ok. Otherwise, we would need a new GD_FLG_TIMERS_READY
+	 * flag.
+	 */
+	if (hlist_empty(&gd->cyclic_list))
+		return;
 
 	/* Prevent recursion */
 	if (gd->flags & GD_FLG_CYCLIC_RUNNING)
 		return;
 
 	gd->flags |= GD_FLG_CYCLIC_RUNNING;
-	hlist_for_each_entry_safe(cyclic, tmp, cyclic_get_list(), list) {
+	now = get_timer_us(0);
+	hlist_for_each_entry_safe(cyclic, tmp, &gd->cyclic_list, list) {
 		/*
 		 * Check if this cyclic function needs to get called, e.g.
 		 * do not call the cyclic func too often
 		 */
-		now = get_timer_us(0);
 		if (time_after_eq64(now, cyclic->next_call)) {
 			/* Call cyclic function and account it's cpu-time */
 			cyclic->next_call = now + cyclic->delay_us;
 			cyclic->func(cyclic);
+			after = get_timer_us(0);
 			cyclic->run_cnt++;
-			cpu_time = get_timer_us(0) - now;
+			cpu_time = after - now;
 			cyclic->cpu_time_us += cpu_time;
+			now = after;
 
 			/* Check if cpu-time exceeds max allowed time */
 			if ((cpu_time > CONFIG_CYCLIC_MAX_CPU_TIME_US) &&
@@ -110,7 +136,7 @@ int cyclic_unregister_all(void)
 	struct cyclic_info *cyclic;
 	struct hlist_node *tmp;
 
-	hlist_for_each_entry_safe(cyclic, tmp, cyclic_get_list(), list)
+	hlist_for_each_entry_safe(cyclic, tmp, &gd->cyclic_list, list)
 		cyclic_unregister(cyclic);
 
 	return 0;

@@ -15,8 +15,6 @@
 #include <virtio_types.h>
 #include <virtio.h>
 
-DECLARE_GLOBAL_DATA_PTR;
-
 #if IS_ENABLED(CONFIG_MTD_NOR_FLASH)
 int is_flash_available(void)
 {
@@ -27,11 +25,6 @@ int is_flash_available(void)
 	return 0;
 }
 #endif
-
-int board_init(void)
-{
-	return 0;
-}
 
 int board_late_init(void)
 {
@@ -63,11 +56,3 @@ int board_fit_config_name_match(const char *name)
 	return 0;
 }
 #endif
-
-int board_fdt_blob_setup(void **fdtp)
-{
-	/* Stored the DTB address there during our init */
-	*fdtp = (void *)(ulong)gd->arch.firmware_fdt_addr;
-
-	return 0;
-}

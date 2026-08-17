@@ -5,12 +5,10 @@
 
 config INTEL_APOLLOLAKE
 	bool
-	select FSP_VERSION2
 	select HAVE_FSP
 	select ARCH_MISC_INIT
 	select USE_CAR
 	select INTEL_SOC
-	select INTEL_PMC
 	select TPL_X86_TSC_TIMER_NATIVE
 	select SPL_PCH
 	select TPL_PCH

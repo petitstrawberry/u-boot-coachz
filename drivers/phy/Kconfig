@@ -4,6 +4,7 @@ menu "PHY Subsystem"
 config PHY
 	bool "PHY Core"
 	depends on DM
+	select DEVRES
 	help
 	  PHY support.
 
@@ -71,14 +72,14 @@ config AB8500_USB_PHY
 	  Support for the USB OTG PHY in ST-Ericsson AB8500.
 
 config APPLE_ATCPHY
-       bool "Apple Type-C PHY Driver"
-       depends on PHY && ARCH_APPLE
-       default y
-       help
-         Support for the Apple Type-C PHY.
+	bool "Apple Type-C PHY Driver"
+	depends on PHY && ARCH_APPLE
+	default y
+	help
+	  Support for the Apple Type-C PHY.
 
-	 This is a dummy driver since the PHY is initialized
-	 sufficiently by previous stage firmware.
+	  This is a dummy driver since the PHY is initialized
+	  sufficiently by previous stage firmware.
 
 config BCM6318_USBH_PHY
 	bool "BCM6318 USBH PHY support"
@@ -113,7 +114,7 @@ config BCM_SR_PCIE_PHY
 	  If unsure, say N.
 
 config PHY_DA8XX_USB
-	tristate "TI DA8xx USB PHY Driver"
+	bool "TI DA8xx USB PHY Driver"
 	depends on PHY && ARCH_DAVINCI
 	help
 	  Enable this to support the USB PHY on DA8xx SoCs.
@@ -137,7 +138,7 @@ config SPL_PIPE3_PHY
 	  and omap5
 
 config AM654_PHY
-	tristate "TI AM654 SERDES support"
+	bool "TI AM654 SERDES support"
 	depends on PHY && ARCH_K3
 	select REGMAP
 	select SYSCON
@@ -154,7 +155,7 @@ config STI_USB_PHY
 	  STiH407 SoC families.
 
 config PHY_RCAR_GEN2
-	tristate "Renesas R-Car Gen2 USB PHY"
+	bool "Renesas R-Car Gen2 USB PHY"
 	depends on PHY && RCAR_GEN2
 	help
 	  Support for the Renesas R-Car Gen2 USB PHY. This driver operates the
@@ -162,7 +163,7 @@ config PHY_RCAR_GEN2
 	  allows configuring the module multiplexing.
 
 config PHY_RCAR_GEN3
-	tristate "Renesas R-Car Gen3 USB PHY"
+	bool "Renesas R-Car Gen3 USB PHY"
 	depends on PHY && CLK && DM_REGULATOR && (RCAR_GEN3 || RZG2L)
 	default y if (RCAR_GEN3 || RZG2L)
 	help
@@ -170,7 +171,7 @@ config PHY_RCAR_GEN3
 	  PHY connected to EHCI USB module and controls USB OTG operation.
 
 config PHY_STM32_USBPHYC
-	tristate "STMicroelectronics STM32 SoC USB HS PHY driver"
+	bool "STMicroelectronics STM32 SoC USB HS PHY driver"
 	depends on PHY && ARCH_STM32MP
 	help
 	  Enable this to support the High-Speed USB transceiver that is part of
@@ -248,16 +249,25 @@ config MT7620_USB_PHY
 	depends on PHY
 	depends on SOC_MT7620
 	help
-          Support the intergated USB PHY in MediaTek MT7620 SoC
+	  Support the intergated USB PHY in MediaTek MT7620 SoC
 
 config MT76X8_USB_PHY
 	bool "MediaTek MT76x8 (7628/88) USB PHY support"
 	depends on PHY
 	depends on SOC_MT7628
 	help
-          Support the USB PHY in MT76x8 SoCs
+	  Support the USB PHY in MT76x8 SoCs
 
 	  This PHY is found on MT76x8 devices supporting USB.
+
+config PHY_EXYNOS_USBDRD
+	bool "Exynos SoC series USB DRD PHY driver"
+	depends on PHY && CLK
+	depends on ARCH_EXYNOS
+	select REGMAP
+	select SYSCON
+	help
+	  Enable USB DRD PHY support for Exynos SoC series.
 
 config PHY_MTK_TPHY
 	bool "MediaTek T-PHY Driver"
@@ -272,6 +282,27 @@ config PHY_MTK_TPHY
 	  multi-ports is first version, otherwise is second veriosn,
 	  so you can easily distinguish them by banks layout.
 
+config PHY_MTK_UFS
+	bool "MediaTek UFS M-PHY driver"
+	depends on ARCH_MEDIATEK
+	depends on PHY
+	help
+	  Support for UFS M-PHY on MediaTek chipsets.
+	  Enable this to provide vendor-specific probing,
+	  initialization, power on and power off flow of
+	  specified M-PHYs.
+
+config PHY_MTK_XSPHY
+	bool "MediaTek XS-PHY Driver"
+	depends on PHY
+	depends on ARCH_MEDIATEK
+	select REGMAP
+	select SYSCON
+	help
+	  Enable this to support the SuperSpeedPlus XS-PHY transceiver for
+	  USB3.1 GEN2 controllers on MediaTek chips. The driver supports
+	  multiple USB2.0, USB3.1 GEN2 ports.
+
 config PHY_NPCM_USB
 	bool "Nuvoton NPCM USB PHY support"
 	depends on PHY
@@ -280,11 +311,19 @@ config PHY_NPCM_USB
 	  Support the USB PHY in NPCM SoCs
 
 config PHY_IMX8MQ_USB
-	bool "NXP i.MX8MQ/i.MX8MP USB PHY Driver"
+	bool "NXP i.MX8MQ/i.MX8MP/i.MX95/i.MX94 USB PHY Driver"
 	depends on PHY
-	depends on IMX8MQ || IMX8MP
+	depends on IMX8MQ || IMX8MP || IMX95 || IMX94
 	help
-	  Support the USB3.0 PHY in NXP i.MX8MQ or i.MX8MP SoC
+	  Support the USB3.0 PHY in NXP i.MX8MQ, i.MX8MP, i.MX95, and i.MX94 SoCs.
+
+config SPL_PHY_IMX8MQ_USB
+	bool "Enable NXP i.MX8MQ/i.MX8MP/i.MX95/i.MX94 USB3.0 PHY Driver in SPL"
+	depends on SPL_PHY
+	depends on IMX8MQ || IMX8MP || IMX95 || IMX94
+	help
+	  Enable support for the USB3.0 PHY in NXP i.MX8MQ, i.MX8MP, i.MX95, and
+	  i.MX94 SoCs in SPL.
 
 config PHY_IMX8M_PCIE
 	bool "NXP i.MX8MM/i.MX8MP PCIe PHY Driver"
@@ -298,7 +337,7 @@ config PHY_IMX8M_PCIE
 	  This PHY is found on i.MX8M devices supporting PCIe.
 
 config PHY_XILINX_ZYNQMP
-	tristate "Xilinx ZynqMP PHY driver"
+	bool "Xilinx ZynqMP PHY driver"
 	depends on PHY && ARCH_ZYNQMP
 	help
 	  Enable this to support ZynqMP High Speed Gigabit Transceiver
@@ -310,5 +349,13 @@ source "drivers/phy/ti/Kconfig"
 source "drivers/phy/qcom/Kconfig"
 source "drivers/phy/renesas/Kconfig"
 source "drivers/phy/starfive/Kconfig"
+
+config PHY_COMMON_PROPS
+	bool "Common PHY properties support"
+	help
+	  Enable support for common PHY properties defined in the device tree,
+	  such as rx-polarity and tx-polarity. This provides helpers for PHY
+	  drivers to read polarity and other standard PHY properties from the
+	  device tree node.
 
 endmenu

@@ -42,41 +42,6 @@ DECLARE_GLOBAL_DATA_PTR;
 
 static struct tag *params;
 
-__weak void board_quiesce_devices(void)
-{
-}
-
-/**
- * announce_and_cleanup() - Print message and prepare for kernel boot
- *
- * @fake: non-zero to do everything except actually boot
- */
-static void announce_and_cleanup(int fake)
-{
-	bootstage_mark_name(BOOTSTAGE_ID_BOOTM_HANDOFF, "start_kernel");
-#ifdef CONFIG_BOOTSTAGE_FDT
-	bootstage_fdt_add_report();
-#endif
-#ifdef CONFIG_BOOTSTAGE_REPORT
-	bootstage_report();
-#endif
-
-	board_quiesce_devices();
-
-	printf("\nStarting kernel ...%s\n\n", fake ?
-		"(fake run for tracing)" : "");
-	/*
-	 * Call remove function of all devices with a removal flag set.
-	 * This may be useful for last-stage operations, like cancelling
-	 * of DMA operation or releasing device internal buffers.
-	 * dm_remove_devices_active() ensures that vital devices are removed in
-	 * a second round.
-	 */
-	dm_remove_devices_active();
-
-	cleanup_before_linux();
-}
-
 static void setup_start_tag (struct bd_info *bd)
 {
 	params = (struct tag *)bd->bi_boot_params;
@@ -99,8 +64,8 @@ static void setup_memory_tags(struct bd_info *bd)
 		params->hdr.tag = ATAG_MEM;
 		params->hdr.size = tag_size (tag_mem32);
 
-		params->u.mem.start = bd->bi_dram[i].start;
-		params->u.mem.size = bd->bi_dram[i].size;
+		params->u.mem.start = gd->dram[i].start;
+		params->u.mem.size = gd->dram[i].size;
 
 		params = tag_next (params);
 	}
@@ -183,7 +148,7 @@ __weak void setup_board_tags(struct tag **in_params) {}
 static void do_nonsec_virt_switch(void)
 {
 	smp_kick_all_cpus();
-	dcache_disable();	/* flush cache before swtiching to EL2 */
+	dcache_disable();	/* flush cache before switching to EL2 */
 }
 #endif
 
@@ -258,6 +223,11 @@ bool armv7_boot_nonsec(void)
 
 	return nonsec;
 }
+#else
+bool armv7_boot_nonsec(void)
+{
+	return false;
+}
 #endif
 
 #ifdef CONFIG_ARM64
@@ -283,13 +253,11 @@ static void switch_to_el1(void)
 #endif
 
 /* Subcommand: GO */
+#ifdef CONFIG_ARM64
 static void boot_jump_linux(struct bootm_headers *images, int flag)
 {
-#ifdef CONFIG_ARM64
 	void (*kernel_entry)(void *fdt_addr, void *res0, void *res1,
 			void *res2);
-	int fake = (flag & BOOTM_STATE_OS_FAKE_GO);
-
 	kernel_entry = (void (*)(void *fdt_addr, void *res0, void *res1,
 				void *res2))images->ep;
 
@@ -297,9 +265,10 @@ static void boot_jump_linux(struct bootm_headers *images, int flag)
 		(ulong) kernel_entry);
 	bootstage_mark(BOOTSTAGE_ID_RUN_OS);
 
-	announce_and_cleanup(fake);
+	bootm_final(flag);
+	cleanup_before_linux();
 
-	if (!fake) {
+	if (!(flag & BOOTM_STATE_OS_FAKE_GO)) {
 #ifdef CONFIG_ARMV8_PSCI
 		armv8_setup_psci();
 #endif
@@ -323,18 +292,29 @@ static void boot_jump_linux(struct bootm_headers *images, int flag)
 					    ES_TO_AARCH64);
 #endif
 	}
+}
 #else
+static __maybe_unused bool boot_jump_via_optee;
+static __maybe_unused unsigned long boot_jump_via_optee_addr;
+
+static void boot_jump_linux(struct bootm_headers *images, int flag)
+{
 	unsigned long machid = gd->bd->bi_arch_number;
 	char *s;
 	void (*kernel_entry)(int zero, int arch, uint params);
 	unsigned long r2;
-	int fake = (flag & BOOTM_STATE_OS_FAKE_GO);
-
 	kernel_entry = (void (*)(int, int, uint))images->ep;
-#ifdef CONFIG_CPU_V7M
+#ifdef CONFIG_CPU_V7M_V8M
 	ulong addr = (ulong)kernel_entry | 1;
 	kernel_entry = (void *)addr;
 #endif
+
+	if (IS_ENABLED(CONFIG_ARMV7_NONSEC) && armv7_boot_nonsec() &&
+	    boot_jump_via_optee) {
+		printf("Cannot start OPTEE-OS from NS\n");
+		return;
+	}
+
 	s = env_get("machid");
 	if (s) {
 		if (strict_strtoul(s, 16, &machid) < 0) {
@@ -347,25 +327,46 @@ static void boot_jump_linux(struct bootm_headers *images, int flag)
 	debug("## Transferring control to Linux (at address %08lx)" \
 		"...\n", (ulong) kernel_entry);
 	bootstage_mark(BOOTSTAGE_ID_RUN_OS);
-	announce_and_cleanup(fake);
+	bootm_final(flag);
+	cleanup_before_linux();
 
 	if (CONFIG_IS_ENABLED(OF_LIBFDT) && images->ft_len)
 		r2 = (unsigned long)images->ft_addr;
 	else
 		r2 = gd->bd->bi_boot_params;
 
-	if (!fake) {
+	if (flag & BOOTM_STATE_OS_FAKE_GO)
+		return;
+
 #ifdef CONFIG_ARMV7_NONSEC
-		if (armv7_boot_nonsec()) {
-			armv7_init_nonsec();
-			secure_ram_addr(_do_nonsec_entry)(kernel_entry,
-							  0, machid, r2);
-		} else
+	if (armv7_boot_nonsec())
+		armv7_init_nonsec();
 #endif
-			kernel_entry(0, machid, r2);
+
+#ifdef CONFIG_BOOTM_OPTEE
+	if (boot_jump_via_optee)
+		boot_jump_linux_via_optee(kernel_entry, machid, r2, boot_jump_via_optee_addr);
+#endif
+
+#ifdef CONFIG_ARMV7_NONSEC
+	if (armv7_boot_nonsec()) {
+		secure_ram_addr(_do_nonsec_entry)(kernel_entry, 0, machid, r2);
+	} else
+#endif
+	{
+		kernel_entry(0, machid, r2);
 	}
-#endif
 }
+
+#ifndef CONFIG_TI_SECURE_DEVICE
+static void arch_tee_image_process(ulong image, size_t size)
+{
+	boot_jump_via_optee = true;
+	boot_jump_via_optee_addr = image;
+}
+U_BOOT_FIT_LOADABLE_HANDLER(IH_TYPE_TEE, arch_tee_image_process);
+#endif
+#endif
 
 /* Main Entry point for arm bootm implementation
  *

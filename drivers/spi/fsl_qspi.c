@@ -267,6 +267,14 @@ static const struct fsl_qspi_devtype_data ls2080a_data = {
 	.little_endian = true,
 };
 
+static const struct fsl_qspi_devtype_data spacemit_k1_data = {
+	.rxfifo = SZ_128,
+	.txfifo = SZ_256,
+	.ahb_buf_size = SZ_128,
+	.quirks = QUADSPI_QUIRK_TKT253890,
+	.little_endian = true,
+};
+
 struct fsl_qspi {
 	struct udevice *dev;
 	void __iomem *iobase;
@@ -472,7 +480,13 @@ static void fsl_qspi_prepare_lut(struct fsl_qspi *q,
 		    op->addr.nbytes) {
 			for (i = 0; i < ARRAY_SIZE(lutval); i++)
 				qspi_writel(q, lutval[i], base + QUADSPI_AHB_LUT_REG(i));
+
+			qspi_writel(q, QUADSPI_BFGENCR_SEQID(SEQID_LUT_AHB),
+				q->iobase + QUADSPI_BFGENCR);
 		}
+	} else {
+		qspi_writel(q, QUADSPI_BFGENCR_SEQID(SEQID_LUT),
+			q->iobase + QUADSPI_BFGENCR);
 	}
 
 	/* lock LUT */
@@ -737,13 +751,6 @@ static int fsl_qspi_default_setup(struct fsl_qspi *q)
 	qspi_writel(q, 0, base + QUADSPI_BUF1IND);
 	qspi_writel(q, 0, base + QUADSPI_BUF2IND);
 
-	if (IS_ENABLED(CONFIG_FSL_QSPI_AHB_FULL_MAP))
-		qspi_writel(q, QUADSPI_BFGENCR_SEQID(SEQID_LUT_AHB),
-			    q->iobase + QUADSPI_BFGENCR);
-	else
-		qspi_writel(q, QUADSPI_BFGENCR_SEQID(SEQID_LUT),
-			    q->iobase + QUADSPI_BFGENCR);
-
 	qspi_writel(q, QUADSPI_RBCT_WMRK_MASK, base + QUADSPI_RBCT);
 	qspi_writel(q, QUADSPI_BUF3CR_ALLMST_MASK |
 		    QUADSPI_BUF3CR_ADATSZ(q->devtype_data->ahb_buf_size / 8),
@@ -871,6 +878,7 @@ static const struct udevice_id fsl_qspi_ids[] = {
 	{ .compatible = "fsl,ls1021a-qspi", .data = (ulong)&ls1021a_data, },
 	{ .compatible = "fsl,ls1088a-qspi", .data = (ulong)&ls2080a_data, },
 	{ .compatible = "fsl,ls2080a-qspi", .data = (ulong)&ls2080a_data, },
+	{ .compatible = "spacemit,k1-qspi", .data = (ulong)&spacemit_k1_data, },
 	{ }
 };
 

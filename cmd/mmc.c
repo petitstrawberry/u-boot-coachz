@@ -8,6 +8,7 @@
 #include <command.h>
 #include <console.h>
 #include <display_options.h>
+#include <env.h>
 #include <mapmem.h>
 #include <memalign.h>
 #include <mmc.h>
@@ -15,6 +16,7 @@
 #include <sparse_format.h>
 #include <image-sparse.h>
 #include <vsprintf.h>
+#include <linux/compiler_attributes.h>
 #include <linux/ctype.h>
 
 static int curr_device = -1;
@@ -27,12 +29,12 @@ static void print_mmcinfo(struct mmc *mmc)
 	printf("Manufacturer ID: %x\n", mmc->cid[0] >> 24);
 	if (IS_SD(mmc)) {
 		printf("OEM: %x\n", (mmc->cid[0] >> 8) & 0xffff);
-		printf("Name: %c%c%c%c%c \n", mmc->cid[0] & 0xff,
+		printf("Name: %c%c%c%c%c\n", mmc->cid[0] & 0xff,
 		(mmc->cid[1] >> 24), (mmc->cid[1] >> 16) & 0xff,
 		(mmc->cid[1] >> 8) & 0xff, mmc->cid[1] & 0xff);
 	} else {
 		printf("OEM: %x\n", (mmc->cid[0] >> 8) & 0xff);
-		printf("Name: %c%c%c%c%c%c \n", mmc->cid[0] & 0xff,
+		printf("Name: %c%c%c%c%c%c\n", mmc->cid[0] & 0xff,
 		(mmc->cid[1] >> 24), (mmc->cid[1] >> 16) & 0xff,
 		(mmc->cid[1] >> 8) & 0xff, mmc->cid[1] & 0xff,
 		(mmc->cid[2] >> 24));
@@ -517,7 +519,7 @@ static int do_mmc_rescan(struct cmd_tbl *cmdtp, int flag,
 
 	if (argc == 1) {
 		mmc = init_mmc_device(curr_device, true);
-	} else if (argc == 2) {
+	} else if ((argc == 2) && (CONFIG_IS_ENABLED(MMC_SPEED_MODE_SET))) {
 		enum bus_mode speed_mode;
 
 		speed_mode = (int)dectoul(argv[1], NULL);
@@ -555,37 +557,47 @@ static int do_mmc_part(struct cmd_tbl *cmdtp, int flag,
 static int do_mmc_dev(struct cmd_tbl *cmdtp, int flag,
 		      int argc, char *const argv[])
 {
-	int dev, part = 0, ret;
+	enum bus_mode speed_mode = MMC_MODES_END;
+	int dev = curr_device, part = 0, ret;
+	char *endp;
 	struct mmc *mmc;
 
-	if (argc == 1) {
-		dev = curr_device;
-		mmc = init_mmc_device(dev, true);
-	} else if (argc == 2) {
-		dev = (int)dectoul(argv[1], NULL);
-		mmc = init_mmc_device(dev, true);
-	} else if (argc == 3) {
-		dev = (int)dectoul(argv[1], NULL);
-		part = (int)dectoul(argv[2], NULL);
-		if (part > PART_ACCESS_MASK) {
-			printf("#part_num shouldn't be larger than %d\n",
-			       PART_ACCESS_MASK);
-			return CMD_RET_FAILURE;
+	switch (argc) {
+	case 4:
+		if (CONFIG_IS_ENABLED(MMC_SPEED_MODE_SET)) {
+			speed_mode = (int)dectoul(argv[3], &endp);
+			if (*endp) {
+				printf("Invalid speed mode index '%s', did you specify a mode name?\n",
+				       argv[3]);
+				return CMD_RET_USAGE;
+			}
 		}
-		mmc = init_mmc_device(dev, true);
-	} else if (argc == 4) {
-		enum bus_mode speed_mode;
 
-		dev = (int)dectoul(argv[1], NULL);
-		part = (int)dectoul(argv[2], NULL);
-		if (part > PART_ACCESS_MASK) {
+		fallthrough;
+	case 3:
+		part = (int)dectoul(argv[2], &endp);
+		if (*endp) {
+			printf("Invalid part number '%s'\n", argv[2]);
+			return CMD_RET_USAGE;
+		} else if (part > PART_ACCESS_MASK) {
 			printf("#part_num shouldn't be larger than %d\n",
 			       PART_ACCESS_MASK);
 			return CMD_RET_FAILURE;
 		}
-		speed_mode = (int)dectoul(argv[3], NULL);
+
+		fallthrough;
+	case 2:
+		dev = (int)dectoul(argv[1], &endp);
+		if (*endp) {
+			printf("Invalid device number '%s'\n", argv[1]);
+			return CMD_RET_USAGE;
+		}
+
+		fallthrough;
+	case 1:
 		mmc = __init_mmc_device(dev, true, speed_mode);
-	} else {
+		break;
+	default:
 		return CMD_RET_USAGE;
 	}
 
@@ -596,7 +608,7 @@ static int do_mmc_dev(struct cmd_tbl *cmdtp, int flag,
 	printf("switch to partitions #%d, %s\n",
 	       part, (!ret) ? "OK" : "ERROR");
 	if (ret)
-		return 1;
+		return CMD_RET_FAILURE;
 
 	curr_device = dev;
 	if (mmc->part_config == MMCPART_NOAVAILABLE)
@@ -1302,12 +1314,17 @@ U_BOOT_CMD(
 #endif
 	"mmc erase blk# cnt\n"
 	"mmc erase partname\n"
+#if CONFIG_IS_ENABLED(MMC_SPEED_MODE_SET)
 	"mmc rescan [mode]\n"
-	"mmc part - lists available partition on current mmc device\n"
 	"mmc dev [dev] [part] [mode] - show or set current mmc device [partition] and set mode\n"
 	"  - the required speed mode is passed as the index from the following list\n"
 	"    [MMC_LEGACY, MMC_HS, SD_HS, MMC_HS_52, MMC_DDR_52, UHS_SDR12, UHS_SDR25,\n"
 	"    UHS_SDR50, UHS_DDR50, UHS_SDR104, MMC_HS_200, MMC_HS_400, MMC_HS_400_ES]\n"
+#else
+	"mmc rescan\n"
+	"mmc dev [dev] [part] - show or set current mmc device [partition]\n"
+#endif
+	"mmc part - lists available partition on current mmc device\n"
 	"mmc list - lists available devices\n"
 	"mmc wp [PART] - power on write protect boot partitions\n"
 	"  arguments:\n"

@@ -2425,7 +2425,7 @@ retry:
 	if (!s) {
 		spin_unlock(&sb_lock);
 		s = alloc_super(type, flags);
-		if (!s)
+		if (IS_ERR_OR_NULL(s))
 			return ERR_PTR(-ENOMEM);
 #ifndef __UBOOT__
 		goto retry;
@@ -2694,7 +2694,7 @@ MODULE_VERSION(__stringify(UBIFS_VERSION));
 MODULE_AUTHOR("Artem Bityutskiy, Adrian Hunter");
 MODULE_DESCRIPTION("UBIFS - UBI File System");
 #else
-int uboot_ubifs_mount(char *vol_name)
+int uboot_ubifs_mount(const char *vol_name)
 {
 	struct dentry *ret;
 	int flags;

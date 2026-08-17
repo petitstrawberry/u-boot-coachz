@@ -20,6 +20,7 @@
 #include <asm/arch/cpu.h>
 #include <asm/arch/soc.h>
 #include <linux/delay.h>
+#include <linux/if_ether.h>
 
 DECLARE_GLOBAL_DATA_PTR;
 
@@ -99,11 +100,6 @@ static bool is_edpu_plus(void)
 		return true;
 	else
 		return false;
-}
-
-int board_early_init_f(void)
-{
-	return 0;
 }
 
 int board_init(void)

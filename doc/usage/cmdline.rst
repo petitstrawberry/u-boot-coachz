@@ -20,11 +20,11 @@ This takes very little code space and offers only basic features:
 - special characters ('$', ';') can be escaped by prefixing with '\',
   for example::
 
-    setenv bootcmd bootm \${address}
+    env set bootcmd bootm \${address}
 
 - You can also escape text by enclosing in single apostrophes, for example::
 
-    setenv addip 'setenv bootargs $bootargs ip=$ipaddr:$serverip:$gatewayip:$netmask:$hostname::off'
+    env set addip 'env set bootargs $bootargs ip=$ipaddr:$serverip:$gatewayip:$netmask:$hostname::off'
 
 Hush shell
 ----------
@@ -36,7 +36,7 @@ This is similar to Bourne shell, with control structures like:
 - `while` ... `do` ... `done`
 - `until` ... `do` ... `done`
 
-Hush supports environment ("global") variables (through setenv / saveenv
+Hush supports environment ("global") variables (through env set / saveenv
 commands) and local shell variables (through standard shell syntax
 `name=value`); only environment variables can be used with the "run" command
 
@@ -54,6 +54,12 @@ General rules
    calling run with a list of variables as arguments), any failing
    command will cause "run" to terminate, i. e. the remaining
    variables are not executed.
+
+#. The variable ``$?`` will be set as the return value of any command. The
+   possible values are 0 on success or 1 on any error e. g. invalid syntax or
+   failure of the command. Any exceptions to this are documented by the
+   specific command, e.g. the :doc:`for command <cmd/for>` sets ``$?`` based on
+   the last command run within the loop.
 
 Representing numbers
 --------------------

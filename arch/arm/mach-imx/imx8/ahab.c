@@ -28,7 +28,7 @@ DECLARE_GLOBAL_DATA_PTR;
 #define AHAB_HASH_TYPE_MASK	0x00000700
 #define AHAB_HASH_TYPE_SHA256	0
 
-int ahab_auth_cntr_hdr(struct container_hdr *container, u16 length)
+void *ahab_auth_cntr_hdr(struct container_hdr *container, u16 length)
 {
 	int err;
 
@@ -37,10 +37,12 @@ int ahab_auth_cntr_hdr(struct container_hdr *container, u16 length)
 
 	err = sc_seco_authenticate(-1, SC_SECO_AUTH_CONTAINER,
 				   SECO_LOCAL_SEC_SEC_SECURE_RAM_BASE);
-	if (err)
+	if (err) {
 		printf("Authenticate container hdr failed, return %d\n", err);
+		return NULL;
+	}
 
-	return err;
+	return (void *)SEC_SECURE_RAM_BASE; /* Return authenticated container header */
 }
 
 int ahab_auth_release(void)
@@ -109,12 +111,11 @@ int ahab_verify_cntr_image(struct boot_img_t *img, int image_index)
 static inline bool check_in_dram(ulong addr)
 {
 	int i;
-	struct bd_info *bd = gd->bd;
 
 	for (i = 0; i < CONFIG_NR_DRAM_BANKS; ++i) {
-		if (bd->bi_dram[i].size) {
-			if (addr >= bd->bi_dram[i].start &&
-			    addr < (bd->bi_dram[i].start + bd->bi_dram[i].size))
+		if (gd->dram[i].size) {
+			if (addr >= gd->dram[i].start &&
+			    addr < (gd->dram[i].start + gd->dram[i].size))
 				return true;
 		}
 	}
@@ -126,7 +127,7 @@ int authenticate_os_container(ulong addr)
 {
 	struct container_hdr *phdr;
 	int i, ret = 0;
-	int err;
+	__maybe_unused int err;
 	u16 length;
 	struct boot_img_t *img;
 	unsigned long s, e;
@@ -159,15 +160,15 @@ int authenticate_os_container(ulong addr)
 
 	debug("container length %u\n", length);
 
-	err = ahab_auth_cntr_hdr(phdr, length);
-	if (err) {
+	phdr = ahab_auth_cntr_hdr(phdr, length);
+	if (!phdr) {
 		ret = -EIO;
 		goto exit;
 	}
 
 	/* Copy images to dest address */
 	for (i = 0; i < phdr->num_images; i++) {
-		img = (struct boot_img_t *)(addr +
+		img = (struct boot_img_t *)((ulong)phdr +
 					    sizeof(struct container_hdr) +
 					    i * sizeof(struct boot_img_t));
 
@@ -401,6 +402,29 @@ static int do_ahab_close(struct cmd_tbl *cmdtp, int flag, int argc,
 	return 0;
 }
 
+static int do_ahab_commit(struct cmd_tbl *cmdtp, int flag, int argc,
+			  char *const argv[])
+{
+	u32 info;
+	int ret;
+
+	if (argc < 2)
+		return CMD_RET_USAGE;
+
+	info = simple_strtoul(argv[1], NULL, 16);
+	printf("Commit index is 0x%x\n", info);
+
+	ret = sc_seco_commit(-1, &info);
+	if (ret) {
+		printf("Error in AHAB commit\n");
+		return ret;
+	}
+
+	printf("AHAB commit succeeded.\n");
+
+	return CMD_RET_SUCCESS;
+}
+
 U_BOOT_CMD(auth_cntr, CONFIG_SYS_MAXARGS, 1, do_authenticate,
 	   "autenticate OS container via AHAB",
 	   "addr\n"
@@ -414,5 +438,11 @@ U_BOOT_CMD(ahab_status, CONFIG_SYS_MAXARGS, 1, do_ahab_status,
 
 U_BOOT_CMD(ahab_close, CONFIG_SYS_MAXARGS, 1, do_ahab_close,
 	   "Change AHAB lifecycle to OEM closed",
+	   ""
+);
+
+U_BOOT_CMD(ahab_commit, CONFIG_SYS_MAXARGS, 1, do_ahab_commit,
+	   "commit into the fuses any new SRK revocation information that have been found\n"
+	   "into the NXP (SECO FW) and OEM containers. For SRK revocation use 0x10 for the value.",
 	   ""
 );

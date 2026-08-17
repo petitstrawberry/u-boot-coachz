@@ -41,8 +41,8 @@ config VIDEO_BRIDGE_ANALOGIX_ANX6345
 	depends on VIDEO_BRIDGE
 	select DM_I2C
 	help
-	 The Analogix ANX6345 is RGB-to-DP converter. It enables an eDP LCD
-	 panel to be connected to an parallel LCD interface.
+	  The Analogix ANX6345 is RGB-to-DP converter. It enables an eDP LCD
+	  panel to be connected to an parallel LCD interface.
 
 config VIDEO_BRIDGE_SOLOMON_SSD2825
 	bool "Solomon SSD2825 bridge driver"
@@ -53,7 +53,7 @@ config VIDEO_BRIDGE_SOLOMON_SSD2825
 
 config VIDEO_BRIDGE_TOSHIBA_TC358768
 	bool "Support Toshiba TC358768 MIPI DSI bridge"
-	depends on VIDEO_BRIDGE && PANEL && DM_GPIO
+	depends on VIDEO_BRIDGE && PANEL && DM_GPIO && !64BIT
 	select VIDEO_MIPI_DSI
 	select DM_I2C
 	help
@@ -66,3 +66,11 @@ config VIDEO_BRIDGE_LVDS_CODEC
 	help
 	  Support for transparent LVDS encoders and decoders that don't
 	  require any configuration.
+
+config VIDEO_BRIDGE_SAMSUNG_CMC623
+	bool "Samsung CMC623 Image Converter driver"
+	depends on VIDEO_BRIDGE && DM_GPIO
+	select DM_I2C
+	help
+	  Samsung CMC623 image converter chip driver.
+	  Found in several Samsung devices such as N1

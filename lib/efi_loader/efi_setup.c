@@ -18,6 +18,9 @@
 
 efi_status_t efi_obj_list_initialized = OBJ_LIST_NOT_INITIALIZED;
 
+const efi_guid_t efi_debug_image_info_table_guid =
+	EFI_DEBUG_IMAGE_INFO_TABLE_GUID;
+
 /*
  * Allow unaligned memory access.
  *
@@ -278,6 +281,21 @@ efi_status_t efi_init_obj_list(void)
 	if (ret != EFI_SUCCESS)
 		goto out;
 
+	/* Initialize system table pointer */
+	if (IS_ENABLED(CONFIG_EFI_DEBUG_SUPPORT)) {
+		efi_guid_t debug_image_info_table_guid =
+			efi_debug_image_info_table_guid;
+
+		ret = efi_initialize_system_table_pointer();
+		if (ret != EFI_SUCCESS)
+			goto out;
+
+		ret = efi_install_configuration_table(&debug_image_info_table_guid,
+						      &efi_m_debug_info_table_header);
+		if (ret != EFI_SUCCESS)
+			goto out;
+	}
+
 	if (IS_ENABLED(CONFIG_EFI_ECPT)) {
 		ret = efi_ecpt_register();
 		if (ret != EFI_SUCCESS)
@@ -374,5 +392,7 @@ efi_status_t efi_init_obj_list(void)
 	ret = efi_start_obj_list();
 out:
 	efi_obj_list_initialized = ret;
+	if (ret != EFI_SUCCESS)
+		log_err("Cannot initialize UEFI sub-system\n");
 	return ret;
 }

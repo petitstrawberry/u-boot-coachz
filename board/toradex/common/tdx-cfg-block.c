@@ -4,7 +4,6 @@
  */
 
 #include <config.h>
-#include <asm/global_data.h>
 #include "tdx-cfg-block.h"
 #include "tdx-eeprom.h"
 
@@ -21,8 +20,6 @@
 #include <mmc.h>
 #include <nand.h>
 #include <asm/mach-types.h>
-
-DECLARE_GLOBAL_DATA_PTR;
 
 #define TAG_VALID	0xcf01
 #define TAG_MAC		0x0000
@@ -157,7 +154,7 @@ const struct toradex_som toradex_modules[] = {
 	{ VERDIN_IMX8MMDL_2G_IT,                 "Verdin iMX8M Mini DualLite 2GB IT",    TARGET_IS_ENABLED(VERDIN_IMX8MM)   },
 	{ VERDIN_IMX8MMQ_2G_IT_NO_CAN,           "Verdin iMX8M Mini Quad 2GB IT",        TARGET_IS_ENABLED(VERDIN_IMX8MM)   },
 	{ AQUILA_AM69O_32G_WIFI_BT_IT,           "Aquila AM69 Octa 32GB WB IT",          TARGET_IS_ENABLED(AQUILA_AM69_A72) },
-	{ VERDIN_IMX95H_16G_WIFI_BT_IT,          "Verdin iMX95 Hexa 16GB WB IT",         TARGET_IS_ENABLED(VERDIN_IMX95)    },
+	{ VERDIN_IMX95H_8G_WIFI_BT_IT,           "Verdin iMX95 Hexa 8GB WB IT",          TARGET_IS_ENABLED(VERDIN_IMX95)    },
 	{ VERDIN_IMX8MMQ_4G_WIFI_BT_ET,          "Verdin iMX8M Mini Quad 4GB WB ET",     TARGET_IS_ENABLED(VERDIN_IMX8MM)   },
 	{ APALIS_IMX8QM_WIFI_BT_IT_1300MHZ,      "Apalis iMX8QM 4GB WB IT",              TARGET_IS_ENABLED(APALIS_IMX8)     },
 	{ APALIS_IMX8QM_IT_1300MHZ,              "Apalis iMX8QM 4GB IT",                 TARGET_IS_ENABLED(APALIS_IMX8)     },
@@ -166,6 +163,45 @@ const struct toradex_som toradex_modules[] = {
 	{ APALIS_IMX8QM_8GB_WIFI_BT_IT_1300MHZ,  "Apalis iMX8QM 8GB WB IT",              TARGET_IS_ENABLED(APALIS_IMX8)     },
 	{ SMARC_IMX95_HEXA_8GB_WB_IT,            "SMARC iMX95 Hexa 8GB WB IT",           TARGET_IS_ENABLED(TORADEX_SMARC_IMX95)  },
 	{ SMARC_IMX8MPQ_4GB_WB_IT,               "SMARC iMX8M Plus Quad 4GB WB IT",      TARGET_IS_ENABLED(TORADEX_SMARC_IMX8MP) },
+	{ AQUILA_IMX95_HEXA_8GB_WB_IT,           "Aquila iMX95 Hexa 8GB WB IT",          TARGET_IS_ENABLED(AQUILA_IMX95)         },
+	{ VERDIN_AM62PQ_2G_WIFI_BT_IT,           "Verdin AM62P Quad 2GB WB IT",          TARGET_IS_ENABLED(VERDIN_AM62P_A53)     },
+	{ SMARC_IMX95_HEXA_8GB_IT,               "SMARC iMX95 Hexa 8GB IT",              TARGET_IS_ENABLED(TORADEX_SMARC_IMX95)  },
+	{ SMARC_IMX95_HEXA_4GB_WB_IT,            "SMARC iMX95 Hexa 4GB WB IT",           TARGET_IS_ENABLED(TORADEX_SMARC_IMX95)  },
+	{ SMARC_IMX95_HEXA_4GB_ET,               "SMARC iMX95 Hexa 4GB ET",              TARGET_IS_ENABLED(TORADEX_SMARC_IMX95)  },
+	{ SMARC_IMX95_HEXA_2GB_WB_IT,            "SMARC iMX95 Hexa 2GB WB IT",           TARGET_IS_ENABLED(TORADEX_SMARC_IMX95)  },
+	{ SMARC_IMX95_HEXA_2GB_ET,               "SMARC iMX95 Hexa 2GB ET",              TARGET_IS_ENABLED(TORADEX_SMARC_IMX95)  },
+	{ SMARC_IMX8MPQ_4GB_IT,                  "SMARC iMX8M Plus Quad 4GB IT",         TARGET_IS_ENABLED(TORADEX_SMARC_IMX8MP) },
+	{ SMARC_IMX8MPQ_2GB_WB_IT,               "SMARC iMX8M Plus Quad 2GB WB IT",      TARGET_IS_ENABLED(TORADEX_SMARC_IMX8MP) },
+	{ SMARC_IMX8MPQ_2GB_IT,                  "SMARC iMX8M Plus Quad 2GB IT",         TARGET_IS_ENABLED(TORADEX_SMARC_IMX8MP) },
+	{ SMARC_IMX8MPQL_1GB_WB_ET,              "SMARC iMX8M Plus Quadlite 1GB WB ET",  TARGET_IS_ENABLED(TORADEX_SMARC_IMX8MP) },
+	{ SMARC_IMX8MPQL_1GB_ET,                 "SMARC iMX8M Plus Quadlite 1GB ET",     TARGET_IS_ENABLED(TORADEX_SMARC_IMX8MP) },
+	{ AQUILA_AM69O_32GB_IT,                  "Aquila AM69 Octa 32GB IT",             TARGET_IS_ENABLED(AQUILA_AM69_A72)      },
+	{ AQUILA_AM69O_16GB_WB_IT,               "Aquila AM69 Octa 16GB WB IT",          TARGET_IS_ENABLED(AQUILA_AM69_A72)      },
+	{ AQUILA_AM69O_16GB_IT,                  "Aquila AM69 Octa 16GB IT",             TARGET_IS_ENABLED(AQUILA_AM69_A72)      },
+	{ AQUILA_AM69O_8GB_WB_IT,                "Aquila AM69 Octa 8GB WB IT",           TARGET_IS_ENABLED(AQUILA_AM69_A72)      },
+	{ AQUILA_AM69O_8GB_IT,                   "Aquila AM69 Octa 8GB IT",              TARGET_IS_ENABLED(AQUILA_AM69_A72)      },
+	{ VERDIN_IMX8MMQ_WB_IT_64G,              "Verdin iMX8M Mini Quad 2GB WB IT",     TARGET_IS_ENABLED(VERDIN_IMX8MM)        },
+	{ LINO_IMX93D_2GB_IT,                    "Lino iMX93 Dual 2GB IT",               TARGET_IS_ENABLED(LINO_IMX93)           },
+	{ LINO_IMX91S_2GB_IT,                    "Lino iMX91 Solo 2GB IT",               TARGET_IS_ENABLED(LINO_IMX91)           },
+	{ OSM_IMX93D_2GB_IT,                     "OSM iMX93 Dual 2GB IT",                TARGET_IS_ENABLED(TORADEX_OSM_IMX93)    },
+	{ OSM_IMX91S_2GB_IT,                     "OSM iMX91 Solo 2GB IT",                TARGET_IS_ENABLED(TORADEX_OSM_IMX91)    },
+	{ VERDIN_AM62D_1G_ET_GPU_NODSI,          "Verdin AM62 Dual 1GB ET",              TARGET_IS_ENABLED(VERDIN_AM62_A53)      },
+	{ AQUILA_TDA4O_16GB_IT,                  "Aquila TDA4 Octa 16GB IT",             TARGET_IS_ENABLED(AQUILA_AM69_A72)      },
+	{ VERDIN_IMX95H_4G_WB_IT,                "Verdin iMX95 Hexa 4GB WB IT",          TARGET_IS_ENABLED(VERDIN_IMX95)         },
+	{ VERDIN_IMX95H_4G_ET,                   "Verdin iMX95 Hexa 4GB ET",             TARGET_IS_ENABLED(VERDIN_IMX95)         },
+	{ VERDIN_IMX95H_16G_IT,                  "Verdin iMX95 Hexa 16GB IT",            TARGET_IS_ENABLED(VERDIN_IMX95)         },
+	{ SMARC_IMX95_HEXA_4GB_IT,               "SMARC iMX95 Hexa 4GB IT",              TARGET_IS_ENABLED(TORADEX_SMARC_IMX95)  },
+	{ AQUILA_TDA4O_8GB_IT,                   "Aquila TDA4 Octa 8GB IT",              TARGET_IS_ENABLED(AQUILA_AM69_A72)      },
+	{ APALIS_IMX8QM_4GB_WIFI_BT_IT_64G,      "Apalis iMX8QM 4GB WB IT",              TARGET_IS_ENABLED(APALIS_IMX8)          },
+	{ APALIS_IMX8QM_4GB_IT_64G,              "Apalis iMX8QM 4GB IT",                 TARGET_IS_ENABLED(APALIS_IMX8)          },
+	{ APALIS_IMX8QM_8GB_WIFI_BT_IT_64G,      "Apalis iMX8QM 8GB WB IT",              TARGET_IS_ENABLED(APALIS_IMX8)          },
+	{ VERDIN_IMX8MPQ_4GB_WIFI_BT_IT_64G,     "Verdin iMX8M Plus Quad 4GB WB IT",     TARGET_IS_ENABLED(VERDIN_IMX8MP)        },
+	{ VERDIN_IMX8MPQ_4GB_IT_64G,             "Verdin iMX8M Plus Quad 4GB IT",        TARGET_IS_ENABLED(VERDIN_IMX8MP)        },
+	{ VERDIN_IMX8MPQ_8GB_WIFI_BT_IT_64G,     "Verdin iMX8M Plus Quad 8GB WB IT",     TARGET_IS_ENABLED(VERDIN_IMX8MP)        },
+	{ VERDIN_IMX8MMQ_2G_WIFI_BT_IT_64G,      "Verdin iMX8M Mini Quad 2GB WB IT",     TARGET_IS_ENABLED(VERDIN_IMX8MM)        },
+	{ SMARC_IMX8MPQ_4GB_WB_IT_64G,           "SMARC iMX8M Plus Quad 4GB WB IT",      TARGET_IS_ENABLED(TORADEX_SMARC_IMX8MP) },
+	{ VERDIN_AM62D_1G_WIFI_BT_ET,            "Verdin AM62 Dual 1GB WB ET",           TARGET_IS_ENABLED(VERDIN_AM62_A53)      },
+	{ AQUILA_IMX95_HEXA_8GB_IT,              "Aquila iMX95 Hexa 8GB IT",             TARGET_IS_ENABLED(AQUILA_IMX95)         },
 };
 
 struct pid4list {
@@ -485,7 +521,7 @@ static int get_cfgblock_interactive(void)
 			       toradex_modules[i].name);
 	}
 
-	sprintf(message, "Enter the module ID: ");
+	snprintf(message, sizeof(message), "Enter the module ID: ");
 	len = cli_readline(message);
 
 	prodid = dectoul(console_buffer, NULL);
@@ -498,7 +534,8 @@ static int get_cfgblock_interactive(void)
 
 	len = 0;
 	while (len < 4) {
-		sprintf(message, "Enter the module version (e.g. V1.1B or V1.1#26): V");
+		snprintf(message, sizeof(message),
+			 "Enter the module version (e.g. V1.1B or V1.1#26): V");
 		len = cli_readline(message);
 	}
 
@@ -512,7 +549,7 @@ static int get_cfgblock_interactive(void)
 	}
 
 	while (len < 8) {
-		sprintf(message, "Enter module serial number: ");
+		snprintf(message, sizeof(message), "Enter module serial number: ");
 		len = cli_readline(message);
 	}
 
@@ -721,12 +758,13 @@ static int get_cfgblock_carrier_interactive(void)
 		       toradex_carrier_boards[i].name,
 		       toradex_carrier_boards[i].pid4);
 
-	sprintf(message, "Choose your carrier board (provide ID): ");
+	snprintf(message, sizeof(message), "Choose your carrier board (provide ID): ");
 	len = cli_readline(message);
 	tdx_car_hw_tag.prodid = dectoul(console_buffer, NULL);
 
 	do {
-		sprintf(message, "Enter carrier board version (e.g. V1.1B or V1.1#26): V");
+		snprintf(message, sizeof(message),
+			 "Enter carrier board version (e.g. V1.1B or V1.1#26): V");
 		len = cli_readline(message);
 	} while (len < 4);
 
@@ -740,7 +778,7 @@ static int get_cfgblock_carrier_interactive(void)
 	}
 
 	while (len < 8) {
-		sprintf(message, "Enter carrier board serial number: ");
+		snprintf(message, sizeof(message), "Enter carrier board serial number: ");
 		len = cli_readline(message);
 	}
 
@@ -776,7 +814,8 @@ static int do_cfgblock_carrier_create(struct cmd_tbl *cmdtp, int flag, int argc,
 	if (valid_cfgblock_carrier && !force_overwrite) {
 		char message[CONFIG_SYS_CBSIZE];
 
-		sprintf(message, "A valid Toradex Carrier config block is present, still recreate? [y/N] ");
+		snprintf(message, sizeof(message),
+			 "A valid Toradex Carrier config block is present, still recreate? [y/N] ");
 
 		if (!cli_readline(message))
 			goto out;
@@ -884,8 +923,8 @@ static int do_cfgblock_create(struct cmd_tbl *cmdtp, int flag, int argc,
 		if (!force_overwrite) {
 			char message[CONFIG_SYS_CBSIZE];
 
-			sprintf(message,
-				"A valid Toradex config block is present, still recreate? [y/N] ");
+			snprintf(message, sizeof(message),
+				 "A valid Toradex config block is present, still recreate? [y/N] ");
 
 			if (!cli_readline(message))
 				goto out;

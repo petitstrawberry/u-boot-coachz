@@ -18,6 +18,7 @@
 #define _DISK_PART_EFI_H
 
 #include <efi.h>
+#include <part_dos.h>
 
 #define MSDOS_MBR_SIGNATURE 0xAA55
 #define MSDOS_MBR_BOOT_CODE_SIZE 440
@@ -59,6 +60,9 @@
 #define PARTITION_U_BOOT_ENVIRONMENT \
 	EFI_GUID( 0x3de21764, 0x95bd, 0x54bd, \
 		0xa5, 0xc3, 0x4a, 0xbe, 0x78, 0x6f, 0x38, 0xa8)
+#define PARTITION_XBOOTLDR \
+	EFI_GUID( 0xbc13c2ff, 0x59e6, 0x4262, \
+		0xa3, 0x52, 0xb2, 0x75, 0xfd, 0x6f, 0x71, 0x72)
 
 /* Special ChromiumOS things */
 #define PARTITION_CROS_KERNEL \
@@ -76,20 +80,6 @@
 
 /* linux/include/efi.h */
 typedef u16 efi_char16_t;
-
-/* based on linux/include/genhd.h */
-struct partition {
-	u8 boot_ind;		/* 0x80 - active */
-	u8 head;		/* starting head */
-	u8 sector;		/* starting sector */
-	u8 cyl;			/* starting cylinder */
-	u8 sys_ind;		/* What partition type */
-	u8 end_head;		/* end head */
-	u8 end_sector;		/* end sector */
-	u8 end_cyl;		/* end cylinder */
-	__le32 start_sect;	/* starting sector counting from 0 */
-	__le32 nr_sects;	/* nr of sectors in partition */
-} __packed;
 
 /* based on linux/fs/partitions/efi.h */
 typedef struct _gpt_header {
@@ -134,8 +124,28 @@ typedef struct _legacy_mbr {
 	u8 boot_code[MSDOS_MBR_BOOT_CODE_SIZE];
 	__le32 unique_mbr_signature;
 	__le16 unknown;
-	struct partition partition_record[4];
+	dos_partition_t partition_record[4];
 	__le16 signature;
 } __packed legacy_mbr;
+
+#define EFI_PARTITION_INFO_PROTOCOL_GUID \
+	EFI_GUID(0x8cf2f62c, 0xbc9b, 0x4821, 0x80, \
+		 0x8d, 0xec, 0x9e, 0xc4, 0x21, 0xa1, 0xa0)
+
+#define EFI_PARTITION_INFO_PROTOCOL_REVISION 0x0001000
+#define PARTITION_TYPE_OTHER 0x00
+#define PARTITION_TYPE_MBR 0x01
+#define PARTITION_TYPE_GPT 0x02
+
+struct efi_partition_info {
+	u32 revision;
+	u32 type;
+	u8 system;
+	u8 reserved[7];
+	union {
+		dos_partition_t mbr;
+		gpt_entry gpt;
+	} info;
+} __packed;
 
 #endif	/* _DISK_PART_EFI_H */

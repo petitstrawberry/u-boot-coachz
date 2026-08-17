@@ -154,6 +154,24 @@ enum event_t {
 	EVT_MAIN_LOOP,
 
 	/**
+	 * @EVT_POST_PREBOOT:
+	 * This event is triggered in main_loop() after the preboot command
+	 * has run, so that devices initialised by preboot (e.g. USB, UFS)
+	 * are available to event handlers. Its parameter is NULL.
+	 * A non-zero return value causes the boot to fail.
+	 */
+	EVT_POST_PREBOOT,
+
+	/**
+	 * @EVT_OF_LIVE_BUILT:
+	 * This event is triggered immediately after the live device tree has been
+	 * built. This allows for machine specific fixups to be done to the live tree
+	 * (like disabling known-unsupported devices) before it is used. This
+	 * event is only available if OF_LIVE is enabled and is only used after relocation.
+	 */
+	EVT_OF_LIVE_BUILT,
+
+	/**
 	 * @EVT_COUNT:
 	 * This constants holds the maximum event number + 1 and is used when
 	 * looping over all event classes.
@@ -203,6 +221,15 @@ union event_data {
 		oftree tree;
 		struct bootm_headers *images;
 	} ft_fixup;
+
+	/**
+	 * struct event_of_live_built - livetree has been built
+	 *
+	 * @root: The root node of the live device tree
+	 */
+	struct event_of_live_built {
+		struct device_node *root;
+	} of_live_built;
 };
 
 /**
@@ -281,44 +308,13 @@ static inline const char *event_spy_id(struct evspy_info *spy)
 #endif
 }
 
-/*
- * It seems that LTO will drop list entries if it decides they are not used,
- * although the conditions that cause this are unclear.
- *
- * The example found is the following:
- *
- * static int sandbox_misc_init_f(void *ctx, struct event *event)
- * {
- *    return sandbox_early_getopt_check();
- * }
- * EVENT_SPY_FULL(EVT_MISC_INIT_F, sandbox_misc_init_f);
- *
- * where EVENT_SPY_FULL uses ll_entry_declare()
- *
- * In this case, LTO decides to drop the sandbox_misc_init_f() function
- * (which is fine) but then drops the linker-list entry too. This means
- * that the code no longer works, in this case sandbox no-longer checks its
- * command-line arguments properly.
- *
- * Without LTO, the KEEP() command in the .lds file is enough to keep the
- * entry around. But with LTO it seems that the entry has already been
- * dropped before the link script is considered.
- *
- * The only solution I can think of is to mark linker-list entries as 'used'
- * using an attribute. This should be safe, since we don't actually want to drop
- * any of these. However this does slightly limit LTO's optimisation choices.
- *
- * Another issue has come up, only with clang: using 'static' makes it throw
- * away the linker-list entry sometimes, e.g. with the EVT_FT_FIXUP entry in
- * vbe_simple.c - so for now, make it global.
- */
 #define EVENT_SPY_FULL(_type, _func) \
-	__used ll_entry_declare(struct evspy_info, _type ## _3_ ## _func, \
+	ll_entry_declare(struct evspy_info, _type ## _3_ ## _func, \
 		evspy_info) = _ESPY_REC(_type, _func)
 
 /* Simple spy with no function arguments */
 #define EVENT_SPY_SIMPLE(_type, _func) \
-	__used ll_entry_declare(struct evspy_info_simple, \
+	ll_entry_declare(struct evspy_info_simple, \
 		_type ## _3_ ## _func, \
 		evspy_info) = _ESPY_REC_SIMPLE(_type, _func)
 

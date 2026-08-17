@@ -213,11 +213,8 @@ int do_env_print_efi(struct cmd_tbl *cmdtp, int flag, int argc,
 
 	/* Initialize EFI drivers */
 	ret = efi_init_obj_list();
-	if (ret != EFI_SUCCESS) {
-		printf("Error: Cannot initialize UEFI sub-system, r = %lu\n",
-		       ret & ~EFI_ERROR_MASK);
+	if (ret != EFI_SUCCESS)
 		return CMD_RET_FAILURE;
-	}
 
 	for (argc--, argv++; argc > 0 && argv[0][0] == '-'; argc--, argv++) {
 		if (!strcmp(argv[0], "-guid")) {
@@ -367,7 +364,7 @@ out:
  *
  * This function is for "env set -e" or "setenv -e" command:
  *   => env set -e [-guid guid][-nv][-bs][-rt][-at][-a][-v]
- *		   [-i address,size] var, or
+ *		   [-i address:size] var, or
  *                 var [value ...]
  * Encode values specified and set given UEFI variable.
  * If no value is specified, delete the variable.
@@ -389,11 +386,8 @@ int do_env_set_efi(struct cmd_tbl *cmdtp, int flag, int argc,
 
 	/* Initialize EFI drivers */
 	ret = efi_init_obj_list();
-	if (ret != EFI_SUCCESS) {
-		printf("Error: Cannot initialize UEFI sub-system, r = %lu\n",
-		       ret & ~EFI_ERROR_MASK);
+	if (ret != EFI_SUCCESS)
 		return CMD_RET_FAILURE;
-	}
 
 	/*
 	 * attributes = EFI_VARIABLE_BOOTSERVICE_ACCESS |
@@ -454,13 +448,14 @@ int do_env_set_efi(struct cmd_tbl *cmdtp, int flag, int argc,
 		return CMD_RET_USAGE;
 
 	var_name = argv[0];
-	if (default_guid) {
-		if (!strcmp(var_name, "db") || !strcmp(var_name, "dbx") ||
-		    !strcmp(var_name, "dbt"))
-			guid = efi_guid_image_security_database;
-		else
-			guid = efi_global_variable_guid;
+	var_name16 = efi_convert_string(var_name);
+	if (!var_name16) {
+		printf("## Out of memory\n");
+		ret = CMD_RET_FAILURE;
+		goto out;
 	}
+	if (default_guid)
+		guid = *efi_auth_var_get_guid(var_name16);
 
 	if (verbose) {
 		printf("GUID: %pUl (%pUs)\n", &guid, &guid);
@@ -485,16 +480,8 @@ int do_env_set_efi(struct cmd_tbl *cmdtp, int flag, int argc,
 			       16, 1, value, size, true);
 	}
 
-	var_name16 = efi_convert_string(var_name);
-	if (!var_name16) {
-		printf("## Out of memory\n");
-		ret = CMD_RET_FAILURE;
-		goto out;
-	}
 	ret = efi_set_variable_int(var_name16, &guid, attributes, size, value,
 				   true);
-	free(var_name16);
-	unmap_sysmem(value);
 	if (ret == EFI_SUCCESS) {
 		ret = CMD_RET_SUCCESS;
 	} else {
@@ -524,6 +511,7 @@ int do_env_set_efi(struct cmd_tbl *cmdtp, int flag, int argc,
 		ret = CMD_RET_FAILURE;
 	}
 out:
+	free(var_name16);
 	if (value_on_memory)
 		unmap_sysmem(value);
 	else

@@ -210,9 +210,11 @@ uint32_t exfat_vbr_start_checksum(const void* sector, size_t size);
 uint32_t exfat_vbr_add_checksum(const void* sector, size_t size, uint32_t sum);
 le16_t exfat_calc_name_hash(const struct exfat* ef, const le16_t* name,
 		size_t length);
+#ifndef __UBOOT__
 void exfat_humanize_bytes(uint64_t value, struct exfat_human_bytes* hb);
 void exfat_print_info(const struct exfat_super_block* sb,
 		uint32_t free_clusters);
+#endif
 bool exfat_match_option(const char* options, const char* option_name);
 
 int exfat_utf16_to_utf8(char* output, const le16_t* input, size_t outsize,
@@ -235,8 +237,10 @@ int exfat_rename(struct exfat* ef, const char* old_path, const char* new_path);
 void exfat_utimes(struct exfat_node* node, const struct timespec tv[2]);
 void exfat_update_atime(struct exfat_node* node);
 void exfat_update_mtime(struct exfat_node* node);
+#ifndef __UBOOT__
 const char* exfat_get_label(struct exfat* ef);
 int exfat_set_label(struct exfat* ef, const char* label);
+#endif /* __UBOOT__ */
 
 int exfat_soil_super_block(const struct exfat* ef);
 int exfat_mount(struct exfat* ef, const char* spec, const char* options);

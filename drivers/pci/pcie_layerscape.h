@@ -7,9 +7,12 @@
 
 #ifndef _PCIE_LAYERSCAPE_H_
 #define _PCIE_LAYERSCAPE_H_
-#include <pci.h>
 
+#include <fdtdec.h>
+#include <pci.h>
+#include <linux/ioport.h>
 #include <linux/sizes.h>
+#include <linux/types.h>
 #include <asm/arch-fsl-layerscape/svr.h>
 #include <asm/arch-ls102xa/svr.h>
 
@@ -162,7 +165,7 @@ struct ls_pcie_rc {
 };
 
 struct ls_pcie_ep {
-	struct fdt_resource addr_res;
+	struct resource addr_res;
 	struct ls_pcie *pcie;
 	struct udevice *bus;
 	void __iomem *addr;

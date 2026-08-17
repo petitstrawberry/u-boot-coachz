@@ -145,7 +145,7 @@ ENTRY(_main)
 	ldr	r1, =CONFIG_TEXT_BASE
 	sub	r1, r0
 	add	lr, r1
-#if defined(CONFIG_SYS_RELOC_GD_ENV_ADDR)
+#if defined(CONFIG_ENV_RELOC_GD_ENV_ADDR)
 	ldr	r0, [r9, #GD_ENV_ADDR]		/* r0 = gd->env_addr */
 	add	r0, r0, r1
 	str	r0, [r9, #GD_ENV_ADDR]
@@ -153,11 +153,15 @@ ENTRY(_main)
 #endif
 	ldr	r0, [r9, #GD_RELOC_OFF]		/* r0 = gd->reloc_off */
 	add	lr, lr, r0
-#if defined(CONFIG_CPU_V7M)
+#if defined(CONFIG_CPU_V7M_V8M)
 	orr	lr, #1				/* As required by Thumb-only */
 #endif
 	ldr	r0, [r9, #GD_RELOCADDR]		/* r0 = gd->relocaddr */
+#if defined(CONFIG_SKIP_RELOCATE_CODE)
+	bl	relocate_code
+#else
 	b	relocate_code
+#endif
 here:
 /*
  * now relocate vectors
@@ -183,10 +187,6 @@ here:
 	movne	r9, r0
 # endif
 
-#if ! defined(CONFIG_XPL_BUILD)
-	bl coloured_LED_init
-	bl red_led_on
-#endif
 	/* call board_init_r(gd_t *id, ulong dest_addr) */
 	mov     r0, r9                  /* gd_t */
 	ldr	r1, [r9, #GD_RELOCADDR]	/* dest_addr */

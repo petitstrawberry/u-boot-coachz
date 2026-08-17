@@ -43,6 +43,10 @@
 		};
 	};
 
+	bsev@6001b000 {
+		status = "okay";
+	};
+
 	pinmux@70000868 {
 		pinctrl-names = "default";
 		pinctrl-0 = <&state_default>;
@@ -1115,7 +1119,7 @@
 		>;
 	};
 
-	sdmmc1: sdhci@78000000 {
+	sdmmc1: mmc@78000000 {
 		status = "okay";
 		bus-width = <4>;
 
@@ -1125,7 +1129,7 @@
 		vqmmc-supply = <&vddio_usd>;
 	};
 
-	sdmmc4: sdhci@78000600 {
+	sdmmc4: mmc@78000600 {
 		status = "okay";
 		bus-width = <8>;
 		non-removable;

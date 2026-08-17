@@ -7,7 +7,6 @@
 
 #include <dm.h>
 #include <fdtdec.h>
-#include <asm/global_data.h>
 #include <asm/io.h>
 #include <dm/device_compat.h>
 #include <linux/err.h>
@@ -18,8 +17,6 @@
 
 #define COMPHY_MAX_CHIP 4
 
-DECLARE_GLOBAL_DATA_PTR;
-
 static const char *get_speed_string(u32 speed)
 {
 	static const char * const speed_strings[] = {
@@ -28,7 +25,7 @@ static const char *get_speed_string(u32 speed)
 		"10.3125 Gbps"
 	};
 
-	if (speed < 0 || speed > COMPHY_SPEED_MAX)
+	if (speed < 0 || speed >= COMPHY_SPEED_MAX)
 		return "invalid";
 
 	return speed_strings[speed];
@@ -44,7 +41,7 @@ static const char *get_type_string(u32 type)
 		"IGNORE"
 	};
 
-	if (type < 0 || type > COMPHY_TYPE_MAX)
+	if (type < 0 || type >= COMPHY_TYPE_MAX)
 		return "invalid";
 
 	return type_strings[type];
@@ -87,11 +84,11 @@ static int comphy_probe(struct udevice *dev)
 	int res;
 
 	/* Save base addresses for later use */
-	chip_cfg->comphy_base_addr = devfdt_get_addr_index_ptr(dev, 0);
+	chip_cfg->comphy_base_addr = dev_read_addr_index_ptr(dev, 0);
 	if (!chip_cfg->comphy_base_addr)
 		return -EINVAL;
 
-	chip_cfg->hpipe3_base_addr = devfdt_get_addr_index_ptr(dev, 1);
+	chip_cfg->hpipe3_base_addr = dev_read_addr_index_ptr(dev, 1);
 	if (!chip_cfg->hpipe3_base_addr)
 		return -EINVAL;
 

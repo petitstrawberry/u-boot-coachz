@@ -273,8 +273,10 @@ ci_ep_alloc_request(struct usb_ep *ep, unsigned int gfp_flags)
 	if (ci_ep->desc)
 		num = ci_ep->desc->bEndpointAddress & USB_ENDPOINT_NUMBER_MASK;
 
-	if (num == 0 && controller.ep0_req)
+	if (num == 0 && controller.ep0_req) {
+		DBG("%s: already got controller.ep0_req = %p\n", __func__, controller.ep0_req);
 		return &controller.ep0_req->req;
+	}
 
 	ci_req = calloc(1, sizeof(*ci_req));
 	if (!ci_req)
@@ -296,6 +298,8 @@ static void ci_ep_free_request(struct usb_ep *ep, struct usb_request *req)
 
 	if (ci_ep->desc)
 		num = ci_ep->desc->bEndpointAddress & USB_ENDPOINT_NUMBER_MASK;
+	else
+		DBG("%s: no endpoint %p descriptor\n", __func__, ci_ep);
 
 	if (num == 0) {
 		if (!controller.ep0_req)
@@ -308,16 +312,37 @@ static void ci_ep_free_request(struct usb_ep *ep, struct usb_request *req)
 	free(ci_req);
 }
 
-static void ep_enable(int num, int in, int maxpacket)
+static void request_complete(struct usb_ep *ep, struct ci_req *req, int status)
+{
+	if (req->req.status == -EINPROGRESS)
+		req->req.status = status;
+
+	DBG("%s: req %p complete: status %d, actual %u\n",
+	    ep->name, req, req->req.status, req->req.actual);
+
+	req->req.complete(ep, &req->req);
+}
+
+static void request_complete_list(struct usb_ep *ep, struct list_head *list, int status)
+{
+	struct ci_req *req, *tmp_req;
+
+	list_for_each_entry_safe(req, tmp_req, list, queue) {
+		list_del_init(&req->queue);
+		request_complete(ep, req, status);
+	}
+}
+
+static void ep_enable(int num, int in, int type, int maxpacket)
 {
 	struct ci_udc *udc = (struct ci_udc *)controller.ctrl->hcor;
 	unsigned n;
 
 	n = readl(&udc->epctrl[num]);
 	if (in)
-		n |= (CTRL_TXE | CTRL_TXR | CTRL_TXT_BULK);
+		n |= (CTRL_TXE | CTRL_TXR | CTRL_TXT(type));
 	else
-		n |= (CTRL_RXE | CTRL_RXR | CTRL_RXT_BULK);
+		n |= (CTRL_RXE | CTRL_RXR | CTRL_RXT(type));
 
 	if (num != 0) {
 		struct ept_queue_head *head = ci_get_qh(num, in);
@@ -332,9 +357,16 @@ static int ci_ep_enable(struct usb_ep *ep,
 		const struct usb_endpoint_descriptor *desc)
 {
 	struct ci_ep *ci_ep = container_of(ep, struct ci_ep, ep);
-	int num, in;
+	int num, in, type;
 	num = desc->bEndpointAddress & USB_ENDPOINT_NUMBER_MASK;
 	in = (desc->bEndpointAddress & USB_DIR_IN) != 0;
+
+	if (ci_ep->desc) {
+		DBG("%s: endpoint num %d in %d already enabled\n", __func__, num, in);
+		return -EBUSY;
+	}
+
+	type = usb_endpoint_type(desc);
 	ci_ep->desc = desc;
 	ep->desc = desc;
 
@@ -349,7 +381,7 @@ static int ci_ep_enable(struct usb_ep *ep,
 			ep->maxpacket = max;
 		}
 	}
-	ep_enable(num, in, ep->maxpacket);
+	ep_enable(num, in, type, ep->maxpacket);
 	DBG("%s: num=%d maxpacket=%d\n", __func__, num, ep->maxpacket);
 	return 0;
 }
@@ -385,19 +417,32 @@ static int ep_disable(int num, int in)
 static int ci_ep_disable(struct usb_ep *ep)
 {
 	struct ci_ep *ci_ep = container_of(ep, struct ci_ep, ep);
+	LIST_HEAD(req_list);
 	int num, in, err;
+
+	if (!ci_ep->desc) {
+		DBG("%s: attempt to disable a not enabled yet endpoint\n", __func__);
+		err = -EBUSY;
+		goto nodesc;
+	}
 
 	num = ci_ep->desc->bEndpointAddress & USB_ENDPOINT_NUMBER_MASK;
 	in = (ci_ep->desc->bEndpointAddress & USB_DIR_IN) != 0;
+
+	list_splice_init(&ci_ep->queue, &req_list);
+	request_complete_list(ep, &req_list, -ESHUTDOWN);
 
 	err = ep_disable(num, in);
 	if (err)
 		return err;
 
 	ci_ep->desc = NULL;
+	err = 0;
+
+nodesc:
 	ep->desc = NULL;
 	ci_ep->req_primed = false;
-	return 0;
+	return err;
 }
 
 static int ci_bounce(struct ci_req *ci_req, int in)
@@ -584,8 +629,10 @@ static int ci_ep_dequeue(struct usb_ep *_ep, struct usb_request *_req)
 			break;
 	}
 
-	if (&ci_req->req != _req)
+	if (&ci_req->req != _req) {
+		DBG("%s: ci_req not found in the queue\n", __func__);
 		return -EINVAL;
+	}
 
 	list_del_init(&ci_req->queue);
 
@@ -605,6 +652,11 @@ static int ci_ep_queue(struct usb_ep *ep,
 	struct ci_req *ci_req = container_of(req, struct ci_req, req);
 	int in, ret;
 	int __maybe_unused num;
+
+	if (!ci_ep->desc) {
+		DBG("%s: ci_ep->desc == NULL, nothing to do!\n", __func__);
+		return -EINVAL;
+	}
 
 	num = ci_ep->desc->bEndpointAddress & USB_ENDPOINT_NUMBER_MASK;
 	in = (ci_ep->desc->bEndpointAddress & USB_DIR_IN) != 0;
@@ -627,6 +679,8 @@ static int ci_ep_queue(struct usb_ep *ep,
 	ret = ci_bounce(ci_req, in);
 	if (ret)
 		return ret;
+
+	req->status = -EINPROGRESS;
 
 	DBG("ept%d %s pre-queue req %p, buffer %p\n",
 	    num, in ? "in" : "out", ci_req, ci_req->hw_buf);
@@ -679,6 +733,17 @@ static void handle_ep_complete(struct ci_ep *ci_ep)
 	ci_invalidate_qtd(num);
 	ci_req = list_first_entry(&ci_ep->queue, struct ci_req, queue);
 
+	/* Check all dtd are completed, otherwise return for next irq process */
+	next_td = item;
+	for (j = 0; j < ci_req->dtd_count; j++) {
+		ci_invalidate_td(next_td);
+		if (next_td->info & INFO_ACTIVE)
+			return;
+		if (j != ci_req->dtd_count - 1)
+			next_td = (struct ept_queue_item *)(unsigned long)
+				next_td->next;
+	}
+
 	next_td = item;
 	len = 0;
 	for (j = 0; j < ci_req->dtd_count; j++) {
@@ -702,6 +767,7 @@ static void handle_ep_complete(struct ci_ep *ci_ep)
 		ci_ep_submit_next_request(ci_ep);
 
 	ci_req->req.actual = ci_req->req.length - len;
+	ci_req->req.status = 0;
 	ci_debounce(ci_req, in);
 
 	DBG("ept%d %s req %p, complete %x\n",
@@ -732,7 +798,7 @@ static void handle_setup(void)
 	struct ept_queue_head *head;
 	struct usb_ctrlrequest r;
 	int status = 0;
-	int num, in, _num, _in, i;
+	int num, in, _num, _in, i, type;
 	char *buf;
 
 	ci_req = controller.ep0_req;
@@ -786,8 +852,9 @@ static void handle_setup(void)
 						& USB_ENDPOINT_NUMBER_MASK;
 				in = (ep->desc->bEndpointAddress
 						& USB_DIR_IN) != 0;
+				type = usb_endpoint_type(ep->desc);
 				if ((num == _num) && (in == _in)) {
-					ep_enable(num, in, ep->ep.maxpacket);
+					ep_enable(num, in, type, ep->ep.maxpacket);
 					usb_ep_queue(controller.gadget.ep0,
 							req, 0);
 					break;
@@ -939,7 +1006,7 @@ int dm_usb_gadget_handle_interrupts(struct udevice *dev)
 	return value;
 }
 
-void udc_disconnect(void)
+static void udc_disconnect(void)
 {
 	struct ci_udc *udc = (struct ci_udc *)controller.ctrl->hcor;
 	/* disable pullup */

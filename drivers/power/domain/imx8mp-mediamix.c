@@ -143,8 +143,12 @@ static int imx8mp_mediamix_bind(struct udevice *dev)
 
 static int imx8mp_mediamix_probe(struct udevice *dev)
 {
+	struct power_domain_plat *plat = dev_get_uclass_plat(dev);
 	struct imx8mp_mediamix_priv *priv = dev_get_priv(dev);
 	int ret;
+
+	/* Definitions are in imx8mp-power.h */
+	plat->subdomains = 9;
 
 	priv->base = dev_read_addr_ptr(dev);
 
@@ -190,7 +194,7 @@ static const struct udevice_id imx8mp_mediamix_ids[] = {
 	{ }
 };
 
-struct power_domain_ops imx8mp_mediamix_ops = {
+static const struct power_domain_ops imx8mp_mediamix_ops = {
 	.on = imx8mp_mediamix_on,
 	.off = imx8mp_mediamix_off,
 	.of_xlate = imx8mp_mediamix_of_xlate,

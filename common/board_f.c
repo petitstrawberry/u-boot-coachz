@@ -11,8 +11,8 @@
 
 #include <config.h>
 #include <bloblist.h>
-#include <bootstage.h>
 #include <cb_sysinfo.h>
+#include <bootstage.h>
 #include <clock_legacy.h>
 #include <console.h>
 #include <cpu.h>
@@ -32,12 +32,12 @@
 #include <log.h>
 #include <malloc.h>
 #include <mapmem.h>
+#include <memtop.h>
 #include <os.h>
 #include <post.h>
 #include <relocate.h>
 #include <serial.h>
 #include <spl.h>
-#include <status_led.h>
 #include <sysreset.h>
 #include <time.h>
 #include <timer.h>
@@ -52,29 +52,9 @@
 #include <dm/root.h>
 #include <linux/errno.h>
 #include <linux/log2.h>
+#include <linux/sizes.h>
 
 DECLARE_GLOBAL_DATA_PTR;
-
-/*
- * TODO(sjg@chromium.org): IMO this code should be
- * refactored to a single function, something like:
- *
- * void led_set_state(enum led_colour_t colour, int on);
- */
-/************************************************************************
- * Coloured LED functionality
- ************************************************************************
- * May be supplied by boards if desired
- */
-__weak void coloured_LED_init(void) {}
-__weak void red_led_on(void) {}
-__weak void red_led_off(void) {}
-__weak void green_led_on(void) {}
-__weak void green_led_off(void) {}
-__weak void yellow_led_on(void) {}
-__weak void yellow_led_off(void) {}
-__weak void blue_led_on(void) {}
-__weak void blue_led_off(void) {}
 
 /*
  * Why is gd allocated a register? Prior to reloc it might be better to
@@ -245,11 +225,11 @@ static int show_dram_config(void)
 
 	debug("\nRAM Configuration:\n");
 	for (i = size = 0; i < CONFIG_NR_DRAM_BANKS; i++) {
-		size += gd->bd->bi_dram[i].size;
+		size += gd->dram[i].size;
 		debug("Bank #%d: %llx ", i,
-		      (unsigned long long)(gd->bd->bi_dram[i].start));
+		      (unsigned long long)(gd->dram[i].start));
 #ifdef DEBUG
-		print_size(gd->bd->bi_dram[i].size, "\n");
+		print_size(gd->dram[i].size, "\n");
 #endif
 	}
 	debug("\nDRAM:  ");
@@ -267,8 +247,8 @@ static int show_dram_config(void)
 
 __weak int dram_init_banksize(void)
 {
-	gd->bd->bi_dram[0].start = gd->ram_base;
-	gd->bd->bi_dram[0].size = get_effective_memsize();
+	gd->dram[0].start = gd->ram_base;
+	gd->dram[0].size = get_effective_memsize();
 
 	return 0;
 }
@@ -331,6 +311,9 @@ __weak int mach_cpu_init(void)
 /* Get the top of usable RAM */
 __weak phys_addr_t board_get_usable_ram_top(phys_size_t total_size)
 {
+	if (CONFIG_IS_ENABLED(RELOC_ADDR_TOP))
+		return gd->ram_top;
+
 #if defined(CFG_SYS_SDRAM_BASE) && CFG_SYS_SDRAM_BASE > 0
 	/*
 	 * Detect whether we have so much RAM that it goes past the end of our
@@ -351,14 +334,34 @@ __weak int arch_setup_dest_addr(void)
 	return 0;
 }
 
-static int setup_dest_addr(void)
+static int setup_ram_base(void)
+{
+#ifdef CFG_SYS_SDRAM_BASE
+	gd->ram_base = CFG_SYS_SDRAM_BASE;
+#endif
+	return 0;
+}
+
+static int setup_ram_config(void)
 {
 	debug("Monitor len: %08x\n", gd->mon_len);
-	/*
-	 * Ram is setup, size stored in gd !!
-	 */
-	debug("Ram size: %08llX\n", (unsigned long long)gd->ram_size);
-#if CONFIG_VAL(SYS_MEM_TOP_HIDE)
+
+	if (CONFIG_IS_ENABLED(RELOC_ADDR_TOP)) {
+		int i;
+		phys_addr_t top;
+
+		gd->ram_size = 0;
+		for (i = 0; i < CONFIG_NR_DRAM_BANKS; i++) {
+			top = get_mem_top(gd->dram[i].start, gd->dram[i].size,
+					  ALIGN(gd->mon_len, SZ_1M),
+					  (void *)gd->fdt_blob);
+			gd->ram_top = max(top, gd->ram_top);
+			gd->ram_size += gd->dram[i].size;
+		}
+	} else {
+		gd->ram_top = gd->ram_base + get_effective_memsize();
+	}
+	gd->ram_top = board_get_usable_ram_top(gd->mon_len);
 	/*
 	 * Subtract specified amount of memory to hide so that it won't
 	 * get "touched" at all by U-Boot. By fixing up gd->ram_size
@@ -369,17 +372,30 @@ static int setup_dest_addr(void)
 	 * memory size from the SDRAM controller setup will have to
 	 * get fixed.
 	 */
+#if CONFIG_VAL(SYS_MEM_TOP_HIDE)
+	gd->ram_top -= CONFIG_SYS_MEM_TOP_HIDE;
 	gd->ram_size -= CONFIG_SYS_MEM_TOP_HIDE;
 #endif
-#ifdef CFG_SYS_SDRAM_BASE
-	gd->ram_base = CFG_SYS_SDRAM_BASE;
-#endif
-	gd->ram_top = gd->ram_base + get_effective_memsize();
-	gd->ram_top = board_get_usable_ram_top(gd->mon_len);
-	gd->relocaddr = gd->ram_top;
-	debug("Ram top: %08llX\n", (unsigned long long)gd->ram_top);
 
-	return arch_setup_dest_addr();
+	debug("Ram top: %08llx\n", (unsigned long long)gd->ram_top);
+	debug("Ram size: %08llx\n", (unsigned long long)gd->ram_size);
+
+	return 0;
+}
+
+static int setup_dest_addr(void)
+{
+	int ret;
+
+	gd->relocaddr = gd->ram_top;
+	debug("Reloc addr: %08llX\n", (unsigned long long)gd->relocaddr);
+
+	ret = arch_setup_dest_addr();
+	if (ret)
+		return ret;
+
+	gd->initial_relocaddr = gd->relocaddr;
+	return 0;
 }
 
 #ifdef CFG_PRAM
@@ -485,7 +501,7 @@ static int reserve_uboot(void)
 	if (CONFIG_IS_ENABLED(SKIP_RELOCATE))
 		gd->flags |= GD_FLG_SKIP_RELOC;
 
-	if (!(gd->flags & GD_FLG_SKIP_RELOC)) {
+	if (!(gd->flags & GD_FLG_SKIP_RELOC) && !CONFIG_IS_ENABLED(SKIP_RELOCATE_CODE)) {
 		/*
 		 * reserve memory for U-Boot code, data & bss
 		 * round down to next 4 kB limit
@@ -836,7 +852,16 @@ static int initf_dm(void)
 		return 0;
 
 	bootstage_start(BOOTSTAGE_ID_ACCUM_DM_F, "dm_f");
-	ret = dm_init_and_scan(true);
+
+	/*
+	 * If SKIP_EARLY_DM is set then we just create an empty device
+	 * model, the serial port will still be bound later through
+	 * serial_find_console_or_panic() via /chosen/stdout-path
+	 */
+	if (!CONFIG_IS_ENABLED(SKIP_EARLY_DM))
+		ret = dm_init_and_scan(true);
+	else
+		ret = dm_init(false);
 	if (ret)
 		return ret;
 
@@ -900,18 +925,20 @@ static void initcall_run_f(void)
 #if CONFIG_IS_ENABLED(SYS_COREBOOT)
 	INITCALL(coreboot_early_init);
 #endif
+	INITCALL(initf_malloc);
 #if CONFIG_IS_ENABLED(OF_CONTROL)
 	INITCALL(fdtdec_setup);
 #endif
 #if CONFIG_IS_ENABLED(TRACE_EARLY)
 	INITCALL(trace_early_init);
 #endif
-	INITCALL(initf_malloc);
 	INITCALL(initf_upl);
 	INITCALL(log_init);
 	INITCALL(initf_bootstage); /* uses its own timer, so does not need DM */
 	INITCALL(event_init);
-	INITCALL(bloblist_maybe_init);
+#if CONFIG_IS_ENABLED(BLOBLIST)
+	INITCALL(bloblist_init);
+#endif
 	INITCALL(setup_spl_handoff);
 #if CONFIG_IS_ENABLED(CONSOLE_RECORD_INIT_F)
 	INITCALL(console_record_init);
@@ -985,6 +1012,9 @@ static void initcall_run_f(void)
 	 *  - monitor code
 	 *  - board info struct
 	 */
+	INITCALL(setup_ram_base);
+	INITCALL(dram_init_banksize);
+	INITCALL(setup_ram_config);
 	INITCALL(setup_dest_addr);
 #if CONFIG_IS_ENABLED(OF_BOARD_FIXUP) && \
     !CONFIG_IS_ENABLED(OF_INITIAL_DTB_READONLY)
@@ -1012,7 +1042,6 @@ static void initcall_run_f(void)
 	INITCALL(reserve_bloblist);
 	INITCALL(reserve_arch);
 	INITCALL(reserve_stacks);
-	INITCALL(dram_init_banksize);
 	INITCALL(show_dram_config);
 	WATCHDOG_RESET();
 	INITCALL(setup_bdinfo);
@@ -1083,7 +1112,7 @@ void board_init_f(ulong boot_flags)
  */
 static void initcall_run_f_r(void)
 {
-#if CONFIG_IS_ENABLED(X86_64)
+#if !CONFIG_IS_ENABLED(X86_64)
 	INITCALL(init_cache_f_r);
 #endif
 }

@@ -2,14 +2,12 @@
 /*
  * (C) Copyright 2022 - Analog Devices, Inc.
  *
- * Written and/or maintained by Timesys Corporation
+ * Written by Timesys Corporation
  *
- * Contact: Nathan Barrett-Morrison <nathan.morrison@timesys.com>
- * Contact: Greg Malysa <greg.malysa@timesys.com>
  */
 
 #include <asm/io.h>
-#include <asm/arch-adi/sc5xx/sc5xx.h>
+#include <asm/arch/sc5xx.h>
 #include <linux/types.h>
 #include "clkinit.h"
 #include "dmcinit.h"
@@ -103,7 +101,7 @@
 
 #ifdef CONFIG_TARGET_SC584_EZKIT
 	#define DMC_PADCTL2_VALUE	0x0078283C
-#elif CONFIG_TARGET_SC573_EZKIT
+#elif CONFIG_TARGET_SC573_EZLITE
 	#define DMC_PADCTL2_VALUE	0x00782828
 #elif CONFIG_TARGET_SC589_MINI || CONFIG_TARGET_SC589_EZKIT
 	#define DMC_PADCTL2_VALUE	0x00783C3C
@@ -367,7 +365,7 @@ static inline void calibration_legacy(void)
 	 */
 	if (dmc.ddr_mode == DDR3_MODE ||
 	    dmc.ddr_mode == DDR2_MODE) {
-		writel(0XFC000000, dmc.reg + REG_DMC_PHY_CTL2);
+		writel(0xFC000000, dmc.reg + REG_DMC_PHY_CTL2);
 		writel(0x0000000f, dmc.reg + REG_DMC_PHY_CTL0);
 	}
 

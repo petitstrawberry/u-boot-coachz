@@ -14,14 +14,11 @@
 #include <log.h>
 #include <net.h>
 #include <nvmem.h>
-#include <asm/global_data.h>
 #include <dm/device-internal.h>
 #include <dm/uclass-internal.h>
 #include <net/pcap.h>
 #include "eth_internal.h"
 #include <eth_phy.h>
-
-DECLARE_GLOBAL_DATA_PTR;
 
 /**
  * struct eth_device_priv - private structure for each Ethernet device
@@ -460,6 +457,8 @@ int eth_rx(void)
 		if (ret >= 0 && eth_get_ops(current)->free_pkt)
 			eth_get_ops(current)->free_pkt(current, packet, ret);
 		if (ret <= 0)
+			break;
+		if (!eth_is_active(current))
 			break;
 	}
 	if (ret == -EAGAIN)

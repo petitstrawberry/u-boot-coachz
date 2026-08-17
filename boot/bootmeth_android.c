@@ -18,6 +18,7 @@
 #include <bootm.h>
 #include <bootmeth.h>
 #include <dm.h>
+#include <env.h>
 #include <image.h>
 #include <malloc.h>
 #include <mapmem.h>
@@ -251,8 +252,10 @@ static int android_read_bootflow(struct udevice *dev, struct bootflow *bflow)
 		priv->boot_mode = ANDROID_BOOT_MODE_NORMAL;
 		bflow->os_name = strdup("Android");
 	}
-	if (!bflow->os_name)
+	if (!bflow->os_name) {
+		free(priv);
 		return log_msg_ret("os", -ENOMEM);
+	}
 
 	if (priv->boot_mode == ANDROID_BOOT_MODE_BOOTLOADER) {
 		/* Clear BCB */
@@ -425,7 +428,7 @@ static int run_avb_verification(struct bootflow *bflow)
 	const char * const requested_partitions[] = {"boot", "vendor_boot", NULL};
 	struct AvbOps *avb_ops;
 	AvbSlotVerifyResult result;
-	AvbSlotVerifyData *out_data;
+	AvbSlotVerifyData *out_data = NULL;
 	enum avb_boot_state boot_state;
 	char *extra_args;
 	char slot_suffix[3] = "";
@@ -440,8 +443,10 @@ static int run_avb_verification(struct bootflow *bflow)
 		sprintf(slot_suffix, "_%s", priv->slot);
 
 	ret = avb_ops->read_is_device_unlocked(avb_ops, &unlocked);
-	if (ret != AVB_IO_RESULT_OK)
-		return log_msg_ret("avb lock", -EIO);
+	if (ret != AVB_IO_RESULT_OK) {
+		ret = log_msg_ret("avb lock", -EIO);
+		goto out;
+	}
 
 	result = avb_slot_verify(avb_ops,
 				 requested_partitions,
@@ -455,9 +460,8 @@ static int run_avb_verification(struct bootflow *bflow)
 		if (result != AVB_SLOT_VERIFY_RESULT_OK) {
 			printf("Verification failed, reason: %s\n",
 			       str_avb_slot_error(result));
-			if (out_data)
-				avb_slot_verify_data_free(out_data);
-			return log_msg_ret("avb verify", -EIO);
+			ret = log_msg_ret("avb verify", -EIO);
+			goto out;
 		}
 		boot_state = AVB_GREEN;
 	} else {
@@ -466,9 +470,8 @@ static int run_avb_verification(struct bootflow *bflow)
 		    result != AVB_SLOT_VERIFY_RESULT_ERROR_VERIFICATION) {
 			printf("Unlocked verification failed, reason: %s\n",
 			       str_avb_slot_error(result));
-			if (out_data)
-				avb_slot_verify_data_free(out_data);
-			return log_msg_ret("avb verify unlocked", -EIO);
+			ret = log_msg_ret("avb verify unlocked", -EIO);
+			goto out;
 		}
 		boot_state = AVB_ORANGE;
 	}
@@ -477,23 +480,28 @@ static int run_avb_verification(struct bootflow *bflow)
 	if (extra_args) {
 		/* extra_args will be modified after this. This is fine */
 		ret = avb_append_commandline_arg(bflow, extra_args);
-		if (ret < 0)
-			goto free_out_data;
+		if (ret < 0) {
+			ret = log_msg_ret("avb cmdline", ret);
+			goto out;
+		}
 	}
 
 	if (result == AVB_SLOT_VERIFY_RESULT_OK) {
 		ret = avb_append_commandline(bflow, out_data->cmdline);
-		if (ret < 0)
-			goto free_out_data;
+		if (ret < 0) {
+			ret = log_msg_ret("avb cmdline", ret);
+			goto out;
+		}
 	}
 
-	return 0;
+	ret = 0;
 
- free_out_data:
+ out:
 	if (out_data)
 		avb_slot_verify_data_free(out_data);
+	avb_ops_free(avb_ops);
 
-	return log_msg_ret("avb cmdline", ret);
+	return ret;
 }
 #else
 static int run_avb_verification(struct bootflow *bflow)
@@ -510,6 +518,37 @@ static int run_avb_verification(struct bootflow *bflow)
 	return 0;
 }
 #endif /* AVB_VERIFY */
+
+static int append_bootargs_to_cmdline(struct bootflow *bflow)
+{
+	char *bootargs;
+	int len = 0;
+
+	/*
+	 * Check any additionnal bootargs coming from U-Boot env. If any,
+	 * merge them with the current cmdline
+	 */
+	bootargs = env_get("bootargs");
+	if (bootargs) {
+		len += strlen(bootargs) + 1; /* Extra space character needed */
+		len += strlen(bflow->cmdline);
+
+		char *newcmdline = malloc(len + 1); /* +1 for the '\0' */
+
+		if (!newcmdline)
+			return log_msg_ret("newcmdline malloc", -ENOMEM);
+
+		strcpy(newcmdline, bootargs);
+		strcat(newcmdline, " ");
+		strcat(newcmdline, bflow->cmdline);
+
+		/* Free the previous cmdline and replace it */
+		free(bflow->cmdline);
+		bflow->cmdline = newcmdline;
+	}
+
+	return 0;
+}
 
 static int boot_android_normal(struct bootflow *bflow)
 {
@@ -544,6 +583,10 @@ static int boot_android_normal(struct bootflow *bflow)
 
 	if (priv->slot)
 		free(priv->slot);
+
+	ret = append_bootargs_to_cmdline(bflow);
+	if (ret < 0)
+		return log_msg_ret("bootargs append", ret);
 
 	ret = bootm_boot_start(loadaddr, bflow->cmdline);
 

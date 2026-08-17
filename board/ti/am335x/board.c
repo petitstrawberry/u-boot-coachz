@@ -28,6 +28,7 @@
 #include <asm/arch/mmc_host_def.h>
 #include <asm/arch/sys_proto.h>
 #include <asm/arch/mem.h>
+#include <asm/arch/mux.h>
 #include <asm/global_data.h>
 #include <asm/io.h>
 #include <asm/emif.h>
@@ -71,6 +72,12 @@ static struct ctrl_dev *cdev = (struct ctrl_dev *)CTRL_DEVICE_BASE;
 
 #define GPIO0_IRQSTATUSRAW	(AM33XX_GPIO0_BASE + 0x024)
 #define GPIO1_IRQSTATUSRAW	(AM33XX_GPIO1_BASE + 0x024)
+
+static __maybe_unused struct module_pin_mux rmii1_mdio_pin_mux[] = {
+	{OFFSET(mdio_clk), MODE(0) | PULLUP_EN},	/* MDIO_CLK */
+	{OFFSET(mdio_data), MODE(0) | RXACTIVE | PULLUP_EN}, /* MDIO_DATA */
+	{-1},
+};
 
 /*
  * Read header information from EEPROM into global structure.
@@ -283,7 +290,7 @@ const struct dpll_params *get_dpll_ddr_params(void)
 
 static u8 bone_not_connected_to_ac_power(void)
 {
-	if (board_is_bone()) {
+	if (IS_ENABLED(CONFIG_PMIC_TPS65217) && board_is_bone()) {
 		uchar pmic_status_reg;
 		if (tps65217_reg_read(TPS65217_STATUS,
 				      &pmic_status_reg))
@@ -307,6 +314,9 @@ const struct dpll_params *get_dpll_mpu_params(void)
 	if (board_is_pb() || board_is_bone_lt())
 		freq = MPUPLL_M_1000;
 
+	if (board_is_bbge())
+		freq = MPUPLL_M_600;
+
 	switch (freq) {
 	case MPUPLL_M_1000:
 		return &dpll_mpu_opp[ind][5];
@@ -328,6 +338,9 @@ const struct dpll_params *get_dpll_mpu_params(void)
 static void scale_vcores_bone(int freq)
 {
 	int usb_cur_lim, mpu_vdd;
+
+	if (!IS_ENABLED(CONFIG_PMIC_TPS65217))
+		return;
 
 	/*
 	 * Only perform PMIC configurations if board rev > A1
@@ -422,6 +435,9 @@ static void scale_vcores_bone(int freq)
 void scale_vcores_generic(int freq)
 {
 	int sil_rev, mpu_vdd;
+
+	if (!IS_ENABLED(CONFIG_SPL_POWER_TPS65910))
+		return;
 
 	/*
 	 * The GP EVM, IDK and EVM SK use a TPS65910 PMIC.  For all
@@ -770,6 +786,9 @@ int board_init(void)
 			hang();
 		}
 
+		if (!eth0_is_mii)
+			configure_module_pin_mux(rmii1_mdio_pin_mux);
+
 		prueth_is_mii = eth0_is_mii;
 
 		/* disable rising edge IRQs */
@@ -823,6 +842,8 @@ int board_late_init(void)
 
 	if (board_is_bbg1())
 		name = "BBG1";
+	if (board_is_bbge())
+		name = "BBGE";
 	if (board_is_bben()) {
 		char subtype_id = board_ti_get_config()[1];
 
@@ -900,7 +921,7 @@ int board_late_init(void)
 #endif
 
 /* CPSW plat */
-#if (CONFIG_IS_ENABLED(NET) || CONFIG_IS_ENABLED(NET_LWIP)) && \
+#if CONFIG_IS_ENABLED(NET) && \
     !CONFIG_IS_ENABLED(OF_CONTROL)
 struct cpsw_slave_data slave_data[] = {
 	{
@@ -955,7 +976,7 @@ int board_fit_config_name_match(const char *name)
 		return 0;
 	else if (board_is_bone() && !strcmp(name, "am335x-bone"))
 		return 0;
-	else if (board_is_bone_lt() && !board_is_bbg1() &&
+	else if (board_is_bone_lt() && !board_is_bbg1() && !board_is_bbge() &&
 		 !strcmp(name, "am335x-boneblack"))
 		return 0;
 	else if (board_is_pb() && !strcmp(name, "am335x-pocketbeagle"))
@@ -963,6 +984,8 @@ int board_fit_config_name_match(const char *name)
 	else if (board_is_evm_sk() && !strcmp(name, "am335x-evmsk"))
 		return 0;
 	else if (board_is_bbg1() && !strcmp(name, "am335x-bonegreen"))
+		return 0;
+	else if (board_is_bbge() && !strcmp(name, "am335x-bonegreen-eco"))
 		return 0;
 	else if (board_is_icev2() && !strcmp(name, "am335x-icev2"))
 		return 0;

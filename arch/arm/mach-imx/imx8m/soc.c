@@ -38,7 +38,7 @@
 
 DECLARE_GLOBAL_DATA_PTR;
 
-#if defined(CONFIG_IMX_HAB)
+#if IS_ENABLED(CONFIG_IMX_HAB)
 struct imx_fuse const imx_sec_config_fuse = {
 	.bank = 1,
 	.word = 3,
@@ -52,7 +52,7 @@ struct imx_fuse const imx_field_return_fuse = {
 
 int timer_init(void)
 {
-#ifdef CONFIG_XPL_BUILD
+#if IS_ENABLED(CONFIG_XPL_BUILD)
 	struct sctr_regs *sctr = (struct sctr_regs *)SYSCNT_CTRL_BASE_ADDR;
 	unsigned long freq = readl(&sctr->cntfid0);
 
@@ -110,7 +110,7 @@ void set_wdog_reset(struct wdog_regs *wdog)
 	setbits_le16(&wdog->wcr, WDOG_WDT_MASK | WDOG_WDZST_MASK);
 }
 
-#ifdef CONFIG_ARMV8_PSCI
+#if IS_ENABLED(CONFIG_ARMV8_PSCI)
 #define PTE_MAP_NS	PTE_BLOCK_NS
 #else
 #define PTE_MAP_NS	0
@@ -224,11 +224,11 @@ void enable_caches(void)
 
 	while (i < CONFIG_NR_DRAM_BANKS &&
 	       entry < ARRAY_SIZE(imx8m_mem_map)) {
-		if (gd->bd->bi_dram[i].start == 0)
+		if (gd->dram[i].start == 0)
 			break;
-		imx8m_mem_map[entry].phys = gd->bd->bi_dram[i].start;
-		imx8m_mem_map[entry].virt = gd->bd->bi_dram[i].start;
-		imx8m_mem_map[entry].size = gd->bd->bi_dram[i].size;
+		imx8m_mem_map[entry].phys = gd->dram[i].start;
+		imx8m_mem_map[entry].virt = gd->dram[i].start;
+		imx8m_mem_map[entry].size = gd->dram[i].size;
 		imx8m_mem_map[entry].attrs = attrs;
 		debug("Added memory mapping (%d): %llx %llx\n", entry,
 		      imx8m_mem_map[entry].phys, imx8m_mem_map[entry].size);
@@ -290,24 +290,24 @@ int dram_init_banksize(void)
 		sdram_b2_size = 0;
 	}
 
-	gd->bd->bi_dram[bank].start = PHYS_SDRAM;
+	gd->dram[bank].start = PHYS_SDRAM;
 	if (!IS_ENABLED(CONFIG_ARMV8_PSCI) && !IS_ENABLED(CONFIG_XPL_BUILD) && rom_pointer[1]) {
 		phys_addr_t optee_start = (phys_addr_t)rom_pointer[0];
 		phys_size_t optee_size = (size_t)rom_pointer[1];
 
-		gd->bd->bi_dram[bank].size = optee_start - gd->bd->bi_dram[bank].start;
+		gd->dram[bank].size = optee_start - gd->dram[bank].start;
 		if ((optee_start + optee_size) < (PHYS_SDRAM + sdram_b1_size)) {
 			if (++bank >= CONFIG_NR_DRAM_BANKS) {
 				puts("CONFIG_NR_DRAM_BANKS is not enough\n");
 				return -1;
 			}
 
-			gd->bd->bi_dram[bank].start = optee_start + optee_size;
-			gd->bd->bi_dram[bank].size = PHYS_SDRAM +
-				sdram_b1_size - gd->bd->bi_dram[bank].start;
+			gd->dram[bank].start = optee_start + optee_size;
+			gd->dram[bank].size = PHYS_SDRAM +
+				sdram_b1_size - gd->dram[bank].start;
 		}
 	} else {
-		gd->bd->bi_dram[bank].size = sdram_b1_size;
+		gd->dram[bank].size = sdram_b1_size;
 	}
 
 	if (sdram_b2_size) {
@@ -315,8 +315,8 @@ int dram_init_banksize(void)
 			puts("CONFIG_NR_DRAM_BANKS is not enough for SDRAM_2\n");
 			return -1;
 		}
-		gd->bd->bi_dram[bank].start = 0x100000000UL;
-		gd->bd->bi_dram[bank].size = sdram_b2_size;
+		gd->dram[bank].start = 0x100000000UL;
+		gd->dram[bank].size = sdram_b2_size;
 	}
 
 	return 0;
@@ -442,7 +442,7 @@ static u32 get_cpu_variant_type(u32 type)
 		u32 flag = 0;
 
 		if ((value0 & 0xc0000) == 0x80000)
-			return MXC_CPU_IMX8MPD;
+			flag |= (1 << 10);
 
 			/* vpu disabled */
 		if ((value0 & 0x43000000) == 0x43000000)
@@ -475,6 +475,12 @@ static u32 get_cpu_variant_type(u32 type)
 			return MXC_CPU_IMX8MPL;
 		case 2:
 			return MXC_CPU_IMX8MP6;
+		case 0x400:
+			return MXC_CPU_IMX8MPD;
+		case 0x4:
+			return MXC_CPU_IMX8MP5;
+		case 0x404:
+			return MXC_CPU_IMX8MPD2;
 		default:
 			break;
 		}
@@ -700,11 +706,11 @@ int arch_cpu_init(void)
 	return 0;
 }
 
-#if defined(CONFIG_IMX8MN) || defined(CONFIG_IMX8MP)
+#if IS_ENABLED(CONFIG_IMX8MN) || IS_ENABLED(CONFIG_IMX8MP)
 struct rom_api *g_rom_api = (struct rom_api *)0x980;
 #endif
 
-#if defined(CONFIG_IMX8M)
+#if IS_ENABLED(CONFIG_IMX8M)
 #include <spl.h>
 int imx8m_detect_secondary_image_boot(void)
 {
@@ -790,8 +796,8 @@ int boot_mode_getprisec(void)
 }
 #endif
 
-#if defined(CONFIG_IMX8MN) || defined(CONFIG_IMX8MP)
-#ifdef SYS_MMCSD_RAW_MODE_U_BOOT_USE_PARTITION
+#if IS_ENABLED(CONFIG_IMX8MN) || IS_ENABLED(CONFIG_IMX8MP)
+#if IS_ENABLED(CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_USE_PARTITION)
 #define IMG_CNTN_SET1_OFFSET	GENMASK(22, 19)
 unsigned long arch_spl_mmc_get_uboot_raw_sector(struct mmc *mmc,
 						unsigned long raw_sect)
@@ -826,7 +832,7 @@ unsigned long arch_spl_mmc_get_uboot_raw_sector(struct mmc *mmc,
 
 	return raw_sect;
 }
-#endif /* SYS_MMCSD_RAW_MODE_U_BOOT_USE_PARTITION */
+#endif /* CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_USE_PARTITION */
 #endif
 
 bool is_usb_boot(void)
@@ -834,7 +840,7 @@ bool is_usb_boot(void)
 	return get_boot_device() == USB_BOOT;
 }
 
-#ifdef CONFIG_OF_SYSTEM_SETUP
+#if IS_ENABLED(CONFIG_OF_SYSTEM_SETUP)
 bool check_fdt_new_path(void *blob)
 {
 	const char *soc_path = "/soc@0";
@@ -880,7 +886,7 @@ add_status:
 	return 0;
 }
 
-#ifdef CONFIG_IMX8MQ
+#if IS_ENABLED(CONFIG_IMX8MQ)
 bool check_dcss_fused(void)
 {
 	struct ocotp_regs *ocotp = (struct ocotp_regs *)OCOTP_BASE_ADDR;
@@ -1026,7 +1032,7 @@ int disable_vpu_nodes(void *blob)
 		return -EPERM;
 }
 
-#ifdef CONFIG_IMX8MN_LOW_DRIVE_MODE
+#if IS_ENABLED(CONFIG_IMX8MN_LOW_DRIVE_MODE)
 static int low_drive_gpu_freq(void *blob)
 {
 	static const char *nodes_path_8mn[] = {
@@ -1151,7 +1157,7 @@ int disable_gpu_nodes(void *blob)
 {
 	static const char * const nodes_path_8mn[] = {
 		"/gpu@38000000",
-		"/soc@/gpu@38000000"
+		"/soc@0/gpu@38000000"
 	};
 
 	static const char * const nodes_path_8mp[] = {
@@ -1311,7 +1317,7 @@ int ft_system_setup(void *blob, struct bd_info *bd)
 		"/cpus/cpu@3",
 	};
 
-#ifdef CONFIG_IMX8MQ
+#if IS_ENABLED(CONFIG_IMX8MQ)
 	int i = 0;
 	int rc;
 	int nodeoff;
@@ -1387,7 +1393,7 @@ usb_modify_speed:
 	if (is_imx8md())
 		disable_cpu_nodes(blob, nodes_path, 2, 4);
 
-#elif defined(CONFIG_IMX8MM)
+#elif IS_ENABLED(CONFIG_IMX8MM)
 	if (is_imx8mml() || is_imx8mmdl() ||  is_imx8mmsl())
 		disable_vpu_nodes(blob);
 
@@ -1396,10 +1402,10 @@ usb_modify_speed:
 	else if (is_imx8mms() || is_imx8mmsl())
 		disable_cpu_nodes(blob, nodes_path, 3, 4);
 
-#elif defined(CONFIG_IMX8MN)
+#elif IS_ENABLED(CONFIG_IMX8MN)
 	if (is_imx8mnl() || is_imx8mndl() ||  is_imx8mnsl())
 		disable_gpu_nodes(blob);
-#ifdef CONFIG_IMX8MN_LOW_DRIVE_MODE
+#if IS_ENABLED(CONFIG_IMX8MN_LOW_DRIVE_MODE)
 	else {
 		int ldm_gpu = low_drive_gpu_freq(blob);
 
@@ -1415,7 +1421,7 @@ usb_modify_speed:
 	else if (is_imx8mns() || is_imx8mnsl() || is_imx8mnus())
 		disable_cpu_nodes(blob, nodes_path, 3, 4);
 
-#elif defined(CONFIG_IMX8MP)
+#elif IS_ENABLED(CONFIG_IMX8MP)
 	if (is_imx8mpul()) {
 		/* Disable GPU */
 		disable_gpu_nodes(blob);
@@ -1433,13 +1439,15 @@ usb_modify_speed:
 	if (is_imx8mpul() || is_imx8mpl() || is_imx8mp6())
 		disable_npu_nodes(blob);
 
-	if (is_imx8mpul() || is_imx8mpl())
+	if (is_imx8mpul() || is_imx8mpl() ||
+	    is_imx8mpd2() || is_imx8mp5())
 		disable_isp_nodes(blob);
 
-	if (is_imx8mpul() || is_imx8mpl() || is_imx8mp6())
+	if (is_imx8mpul() || is_imx8mpl() || is_imx8mp6() ||
+	    is_imx8mpd2() || is_imx8mp5())
 		disable_dsp_nodes(blob);
 
-	if (is_imx8mpd())
+	if (is_imx8mpd() || is_imx8mpd2())
 		disable_cpu_nodes(blob, nodes_path, 2, 4);
 #endif
 
@@ -1471,7 +1479,34 @@ void reset_cpu(void)
 }
 #endif
 
-#if defined(CONFIG_ARCH_MISC_INIT)
+#if IS_ENABLED(CONFIG_ARCH_MISC_INIT)
+static char *get_reset_cause(void)
+{
+	switch (get_imx_reset_cause()) {
+	case 0x00001:
+	case 0x00011:
+		return "POR";
+	case 0x00004:
+		return "CSU";
+	case 0x00008:
+		return "IPP USER";
+	case 0x00010:
+		return "WDOG";
+	case 0x00020:
+		return "JTAG HIGH-Z";
+	case 0x00040:
+		return "JTAG SW";
+	case 0x00080:
+		return "WDOG3";
+	case 0x00100:
+		return "WDOG2";
+	case 0x00200:
+		return "TEMPSENSE";
+	default:
+		return "unknown reset";
+	}
+}
+
 int arch_misc_init(void)
 {
 	if (IS_ENABLED(CONFIG_FSL_CAAM)) {
@@ -1483,12 +1518,15 @@ int arch_misc_init(void)
 			printf("Failed to initialize caam_jr: %d\n", ret);
 	}
 
+	if (IS_ENABLED(CONFIG_XPL_BUILD))
+		printf("Reset cause: %s\n", get_reset_cause());
+
 	return 0;
 }
 #endif
 
-#if defined(CONFIG_XPL_BUILD)
-#if defined(CONFIG_IMX8MQ) || defined(CONFIG_IMX8MM) || defined(CONFIG_IMX8MN)
+#if IS_ENABLED(CONFIG_XPL_BUILD)
+#if IS_ENABLED(CONFIG_IMX8MQ) || IS_ENABLED(CONFIG_IMX8MM) || IS_ENABLED(CONFIG_IMX8MN)
 bool serror_need_skip = true;
 
 void do_error(struct pt_regs *pt_regs)
@@ -1523,7 +1561,7 @@ void do_error(struct pt_regs *pt_regs)
 #endif
 #endif
 
-#if defined(CONFIG_IMX8MN) || defined(CONFIG_IMX8MP)
+#if IS_ENABLED(CONFIG_IMX8MN) || IS_ENABLED(CONFIG_IMX8MP)
 enum env_location arch_env_get_location(enum env_operation op, int prio)
 {
 	enum boot_device dev = get_boot_device();
@@ -1571,7 +1609,7 @@ enum env_location arch_env_get_location(enum env_operation op, int prio)
 
 #endif
 
-#ifdef CONFIG_IMX_BOOTAUX
+#if IS_ENABLED(CONFIG_IMX_BOOTAUX)
 const struct rproc_att hostmap[] = {
 	/* aux core , host core,  size */
 	{ 0x00000000, 0x007e0000, 0x00020000 },

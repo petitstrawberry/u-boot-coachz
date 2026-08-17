@@ -15,7 +15,6 @@
 #include <log.h>
 #include <os.h>
 #include <u-boot/sha256.h>
-#include <spi.h>
 #include <time.h>
 #include <asm/malloc.h>
 #include <asm/state.h>
@@ -101,7 +100,7 @@ struct ec_state {
 	struct fdt_cros_ec ec_config;
 	uint8_t *flash_data;
 	int flash_data_len;
-	enum ec_current_image current_image;
+	enum ec_image current_image;
 	int matrix_count;
 	struct ec_keymatrix_entry *matrix;	/* the key matrix info */
 	uint8_t keyscan[KEYBOARD_COLS];
@@ -541,7 +540,7 @@ static int process_cmd(struct ec_state *ec,
 		const struct ec_params_vstore_write *req = req_data;
 		struct vstore_slot *slot;
 
-		if (req->slot >= EC_VSTORE_SLOT_MAX)
+		if (req->slot >= VSTORE_SLOT_COUNT)
 			return -EINVAL;
 		slot = &ec->slot[req->slot];
 		slot->locked = true;
@@ -554,7 +553,7 @@ static int process_cmd(struct ec_state *ec,
 		struct ec_response_vstore_read *resp = resp_data;
 		struct vstore_slot *slot;
 
-		if (req->slot >= EC_VSTORE_SLOT_MAX)
+		if (req->slot >= VSTORE_SLOT_COUNT)
 			return -EINVAL;
 		slot = &ec->slot[req->slot];
 		memcpy(resp->data, slot->data, EC_VSTORE_SLOT_SIZE);
@@ -727,7 +726,7 @@ int cros_ec_probe(struct udevice *dev)
 	return cros_ec_register(dev);
 }
 
-struct dm_cros_ec_ops cros_ec_ops = {
+static const struct dm_cros_ec_ops cros_ec_ops = {
 	.packet = cros_ec_sandbox_packet,
 	.get_switches = cros_ec_sandbox_get_switches,
 };

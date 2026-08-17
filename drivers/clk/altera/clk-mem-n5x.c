@@ -4,7 +4,6 @@
  */
 
 #include <asm/arch/clock_manager.h>
-#include <asm/global_data.h>
 #include <asm/io.h>
 #include "clk-mem-n5x.h"
 #include <clk-uclass.h>
@@ -12,8 +11,6 @@
 #include <dm/lists.h>
 #include <dm/util.h>
 #include <dt-bindings/clock/n5x-clock.h>
-
-DECLARE_GLOBAL_DATA_PTR;
 
 struct socfpga_mem_clk_plat {
 	void __iomem *regs;
@@ -106,12 +103,13 @@ static int socfpga_mem_clk_enable(struct clk *clk)
 static int socfpga_mem_clk_of_to_plat(struct udevice *dev)
 {
 	struct socfpga_mem_clk_plat *plat = dev_get_plat(dev);
-	fdt_addr_t addr;
+	void __iomem *addr;
 
-	addr = devfdt_get_addr(dev);
-	if (addr == FDT_ADDR_T_NONE)
+	addr = dev_read_addr_ptr(dev);
+	if (!addr)
 		return -EINVAL;
-	plat->regs = (void __iomem *)addr;
+
+	plat->regs = addr;
 
 	return 0;
 }

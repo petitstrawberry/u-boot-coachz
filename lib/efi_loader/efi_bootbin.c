@@ -10,6 +10,7 @@
 #include <charset.h>
 #include <dm.h>
 #include <efi.h>
+#include <efi_device_path.h>
 #include <efi_loader.h>
 #include <env.h>
 #include <image.h>
@@ -215,30 +216,22 @@ out:
  * Return:	status code
  */
 static efi_status_t efi_binary_run_dp(void *image, size_t size, void *fdt,
-				      void *initrd, size_t initd_sz,
+				      void *initrd, size_t initrd_sz,
 				      struct efi_device_path *dp_dev,
 				      struct efi_device_path *dp_img)
 {
 	efi_status_t ret;
-	struct efi_device_path *dp_initrd;
 
 	/* Initialize EFI drivers */
 	ret = efi_init_obj_list();
-	if (ret != EFI_SUCCESS) {
-		log_err("Error: Cannot initialize UEFI sub-system, r = %lu\n",
-			ret & ~EFI_ERROR_MASK);
-		return -1;
-	}
+	if (ret != EFI_SUCCESS)
+		return ret;
 
 	ret = efi_install_fdt(fdt);
 	if (ret != EFI_SUCCESS)
 		return ret;
 
-	dp_initrd = efi_dp_from_mem(EFI_LOADER_DATA, (uintptr_t)initrd, initd_sz);
-	if (!dp_initrd)
-		return EFI_OUT_OF_RESOURCES;
-
-	ret = efi_initrd_register(dp_initrd);
+	ret = efi_install_initrd(initrd, initrd_sz);
 	if (ret != EFI_SUCCESS)
 		return ret;
 

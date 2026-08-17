@@ -728,15 +728,31 @@ static int imx_pcie_dm_write_config(struct udevice *dev, pci_dev_t bdf,
 static int imx_pcie_dm_probe(struct udevice *dev)
 {
 	struct imx_pcie_priv *priv = dev_get_priv(dev);
+	int ret;
 
 #if CONFIG_IS_ENABLED(DM_REGULATOR)
 	device_get_supply_regulator(dev, "vpcie-supply", &priv->vpcie);
 #endif
 
 	/* if PERST# valid from dt then assert it */
-	gpio_request_by_name(dev, "reset-gpio", 0, &priv->reset_gpio,
-			     GPIOD_IS_OUT);
-	priv->reset_active_high = dev_read_bool(dev, "reset-gpio-active-high");
+	ret = gpio_request_by_name(dev, "reset-gpio", 0, &priv->reset_gpio,
+				   GPIOD_IS_OUT);
+	if (!ret) {
+		/*
+		 * Legacy property, invert assert logic based on
+		 * reset-gpio-active-high. This won't work if flags are not
+		 * matching the reset-gpio-active-high.
+		 */
+		priv->reset_active_high = dev_read_bool(dev, "reset-gpio-active-high");
+	} else {
+		/*
+		 * Linux kernel upstream property, assert active level based on
+		 * GPIO flags, thus leave priv->reset_active_high=0.
+		 */
+		gpio_request_by_name(dev, "reset-gpios", 0, &priv->reset_gpio,
+				     GPIOD_IS_OUT);
+	}
+
 	if (dm_gpio_is_valid(&priv->reset_gpio)) {
 		dm_gpio_set_value(&priv->reset_gpio,
 				  priv->reset_active_high ? 0 : 1);
@@ -758,8 +774,8 @@ static int imx_pcie_of_to_plat(struct udevice *dev)
 {
 	struct imx_pcie_priv *priv = dev_get_priv(dev);
 
-	priv->dbi_base = devfdt_get_addr_index_ptr(dev, 0);
-	priv->cfg_base = devfdt_get_addr_index_ptr(dev, 1);
+	priv->dbi_base = dev_read_addr_index_ptr(dev, 0);
+	priv->cfg_base = dev_read_addr_index_ptr(dev, 1);
 	if (!priv->dbi_base || !priv->cfg_base)
 		return -EINVAL;
 

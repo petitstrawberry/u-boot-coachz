@@ -47,7 +47,7 @@ u32 get_imx_reset_cause(void)
 	return reset_cause;
 }
 
-#if defined(CONFIG_DISPLAY_CPUINFO) && !defined(CONFIG_XPL_BUILD)
+#if defined(CONFIG_DISPLAY_CPUINFO) && !defined(CONFIG_XPL_BUILD) && !CONFIG_IS_ENABLED(CPU)
 static char *get_reset_cause(void)
 {
 	switch (get_imx_reset_cause()) {
@@ -75,11 +75,6 @@ static char *get_reset_cause(void)
 		return "WDOG4";
 	case 0x00200:
 		return "TEMPSENSE";
-#elif defined(CONFIG_IMX8M)
-	case 0x00100:
-		return "WDOG2";
-	case 0x00200:
-		return "TEMPSENSE";
 #else
 	case 0x00100:
 		return "TEMPSENSE";
@@ -90,59 +85,10 @@ static char *get_reset_cause(void)
 		return "unknown reset";
 	}
 }
-#endif
-
-#if defined(CONFIG_DISPLAY_CPUINFO) && !defined(CONFIG_XPL_BUILD)
 
 const char *get_imx_type(u32 imxtype)
 {
 	switch (imxtype) {
-	case MXC_CPU_IMX8MP:
-		return "8MP[8]";	/* Quad-core version of the imx8mp */
-	case MXC_CPU_IMX8MPD:
-		return "8MP Dual[3]";	/* Dual-core version of the imx8mp */
-	case MXC_CPU_IMX8MPL:
-		return "8MP Lite[4]";	/* Quad-core Lite version of the imx8mp */
-	case MXC_CPU_IMX8MP6:
-		return "8MP[6]";	/* Quad-core version of the imx8mp, NPU fused */
-	case MXC_CPU_IMX8MPUL:
-		return "8MP UltraLite";	/* Quad-core UltraLite version of the imx8mp */
-	case MXC_CPU_IMX8MN:
-		return "8MNano Quad"; /* Quad-core version */
-	case MXC_CPU_IMX8MND:
-		return "8MNano Dual"; /* Dual-core version */
-	case MXC_CPU_IMX8MNS:
-		return "8MNano Solo"; /* Single-core version */
-	case MXC_CPU_IMX8MNL:
-		return "8MNano QuadLite"; /* Quad-core Lite version */
-	case MXC_CPU_IMX8MNDL:
-		return "8MNano DualLite"; /* Dual-core Lite version */
-	case MXC_CPU_IMX8MNSL:
-		return "8MNano SoloLite";/* Single-core Lite version of the imx8mn */
-	case MXC_CPU_IMX8MNUQ:
-		return "8MNano UltraLite Quad";/* Quad-core UltraLite version of the imx8mn */
-	case MXC_CPU_IMX8MNUD:
-		return "8MNano UltraLite Dual";/* Dual-core UltraLite version of the imx8mn */
-	case MXC_CPU_IMX8MNUS:
-		return "8MNano UltraLite Solo";/* Single-core UltraLite version of the imx8mn */
-	case MXC_CPU_IMX8MM:
-		return "8MMQ";	/* Quad-core version of the imx8mm */
-	case MXC_CPU_IMX8MML:
-		return "8MMQL";	/* Quad-core Lite version of the imx8mm */
-	case MXC_CPU_IMX8MMD:
-		return "8MMD";	/* Dual-core version of the imx8mm */
-	case MXC_CPU_IMX8MMDL:
-		return "8MMDL";	/* Dual-core Lite version of the imx8mm */
-	case MXC_CPU_IMX8MMS:
-		return "8MMS";	/* Single-core version of the imx8mm */
-	case MXC_CPU_IMX8MMSL:
-		return "8MMSL";	/* Single-core Lite version of the imx8mm */
-	case MXC_CPU_IMX8MQ:
-		return "8MQ";	/* Quad-core version of the imx8mq */
-	case MXC_CPU_IMX8MQL:
-		return "8MQLite";	/* Quad-core Lite version of the imx8mq */
-	case MXC_CPU_IMX8MD:
-		return "8MD";	/* Dual-core version of the imx8mq */
 	case MXC_CPU_MX7S:
 		return "7S";	/* Single-core version of the mx7 */
 	case MXC_CPU_MX7D:
@@ -230,6 +176,7 @@ int print_cpuinfo(void)
 	ret = uclass_get_device(UCLASS_THERMAL, 0, &thermal_dev);
 	if (!ret) {
 		ret = thermal_get_temp(thermal_dev, &cpu_tmp);
+		cpu_tmp /= 1000;
 
 		if (!ret)
 			printf(" at %dC", cpu_tmp);
@@ -284,10 +231,10 @@ u32 get_ahb_clk(void)
 
 void arch_preboot_os(void)
 {
-#if defined(CONFIG_IMX_AHCI)
 	struct udevice *dev;
 	int rc;
 
+#if defined(CONFIG_IMX_AHCI)
 	rc = uclass_find_device(UCLASS_AHCI, 0, &dev);
 	if (!rc && dev) {
 		rc = device_remove(dev, DM_REMOVE_NORMAL);
@@ -307,11 +254,18 @@ void arch_preboot_os(void)
 #endif
 #if defined(CONFIG_VIDEO_IPUV3)
 	/* disable video before launching O/S */
-	ipuv3_fb_shutdown();
+	rc = uclass_find_first_device(UCLASS_VIDEO, &dev);
+	while (!rc && dev) {
+		if (device_active(dev))
+			ipuv3_fb_shutdown(dev);
+		uclass_find_next_device(&dev);
+	}
 #endif
 #if defined(CONFIG_VIDEO_MXS) && !defined(CONFIG_VIDEO)
 	lcdif_power_down();
 #endif
+    (void)dev;
+    (void)rc;
 }
 
 #ifndef CONFIG_IMX8M

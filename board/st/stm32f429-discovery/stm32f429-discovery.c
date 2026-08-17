@@ -14,12 +14,9 @@
 #include <env.h>
 #include <init.h>
 #include <log.h>
-#include <asm/global_data.h>
 
 #include <asm/io.h>
 #include <asm/arch/stm32.h>
-
-DECLARE_GLOBAL_DATA_PTR;
 
 int dram_init(void)
 {
@@ -42,11 +39,6 @@ int dram_init_banksize(void)
 {
 	fdtdec_setup_memory_banksize();
 
-	return 0;
-}
-
-int board_init(void)
-{
 	return 0;
 }
 

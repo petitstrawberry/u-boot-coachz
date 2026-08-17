@@ -233,6 +233,8 @@ enum image_type_t {
 	IH_TYPE_RENESAS_SPKG,		/* Renesas SPKG image */
 	IH_TYPE_STARFIVE_SPL,		/* StarFive SPL image */
 	IH_TYPE_TFA_BL31,		/* TFA BL31 image */
+	IH_TYPE_STM32IMAGE_V2,		/* STMicroelectronics STM32 Image V2.0 */
+	IH_TYPE_AMLIMAGE,		/* Amlogic Boot Image */
 
 	IH_TYPE_COUNT,			/* Number of image types */
 };
@@ -394,7 +396,19 @@ struct bootm_headers {
 	ulong		cmdline_start;
 	ulong		cmdline_end;
 	struct bd_info		*kbd;
-#endif
+
+#if CONFIG_IS_ENABLED(FIT_VERITY)
+	/*
+	 * dm-verity kernel command-line fragments, populated during FIT
+	 * parsing by fit_verity_build_cmdline().  Bootmeths can check
+	 * fit_verity_active() between bootm states, and
+	 * fit_verity_apply_bootargs() appends these to the "bootargs"
+	 * env var during BOOTM_STATE_OS_PREP.
+	 */
+	char *dm_mod_create;
+	char *dm_mod_waitfor;
+#endif /* FIT_VERITY */
+#endif /* !USE_HOSTCC */
 
 	int		verify;		/* env_get("verify")[0] != 'n' */
 
@@ -653,10 +667,10 @@ int boot_get_fpga(struct bootm_headers *images);
  * boot_get_ramdisk() is responsible for finding a valid ramdisk image.
  * Currently supported are the following ramdisk sources:
  *      - multicomponent kernel/ramdisk image,
- *      - commandline provided address of decicated ramdisk image.
+ *      - commandline provided address of dedicated ramdisk image.
  *
  * returns:
- *     0, if ramdisk image was found and valid, or skiped
+ *     0, if ramdisk image was found and valid, or skipped
  *     rd_start and rd_end are set to ramdisk start/end addresses if
  *     ramdisk image is found and valid
  *
@@ -738,7 +752,7 @@ int boot_get_fdt_fit(struct bootm_headers *images, ulong addr,
  * @param bootstage_id	ID of starting bootstage to use for progress updates.
  *			This will be added to the BOOTSTAGE_SUB values when
  *			calling bootstage_mark()
- * @param load_op	Decribes what to do with the load address
+ * @param load_op	Describes what to do with the load address
  * @param datap		Returns address of loaded image
  * @param lenp		Returns length of loaded image
  * Return: node offset of image, or -ve error code on error:
@@ -753,6 +767,72 @@ int fit_image_load(struct bootm_headers *images, ulong addr,
 		   const char **fit_unamep, const char **fit_uname_configp,
 		   int arch, int image_ph_type, int bootstage_id,
 		   enum fit_load_op load_op, ulong *datap, ulong *lenp);
+
+#if !defined(USE_HOSTCC) && CONFIG_IS_ENABLED(FIT_VERITY)
+/**
+ * fit_verity_build_cmdline() - build dm-verity cmdline from FIT metadata
+ * @fit:		pointer to the FIT blob
+ * @conf_noffset:	configuration node offset in @fit
+ * @images:		bootm headers; dm_mod_create / dm_mod_waitfor are
+ *			populated on success
+ *
+ * Called automatically from boot_get_loadable() during FIT parsing.
+ * For each IH_TYPE_FILESYSTEM loadable with a dm-verity subnode,
+ * builds the corresponding dm target specification.
+ *
+ * Return: 0 on success, -ve errno on error
+ */
+int fit_verity_build_cmdline(const void *fit, int conf_noffset,
+			     struct bootm_headers *images);
+
+/**
+ * fit_verity_apply_bootargs() - append dm-verity params to bootargs env
+ * @images:	bootm headers with dm-verity cmdline fragments
+ *
+ * Called from BOOTM_STATE_OS_PREP before bootm_process_cmdline_env().
+ *
+ * Return: 0 on success, -ve errno on error
+ */
+int fit_verity_apply_bootargs(const struct bootm_headers *images);
+
+/**
+ * fit_verity_active() - check whether dm-verity targets were found
+ * @images:	bootm headers
+ *
+ * Return: true if at least one dm-verity target was built
+ */
+static inline bool fit_verity_active(const struct bootm_headers *images)
+{
+	return !!images->dm_mod_create;
+}
+
+/**
+ * fit_verity_free() - free dm-verity cmdline allocations
+ * @images:	bootm headers
+ */
+void fit_verity_free(struct bootm_headers *images);
+
+#else /* !FIT_VERITY */
+
+static inline int fit_verity_build_cmdline(const void *fit, int conf_noffset,
+					   struct bootm_headers *images)
+{
+	return 0;
+}
+
+static inline int fit_verity_apply_bootargs(const struct bootm_headers *images)
+{
+	return 0;
+}
+
+static inline bool fit_verity_active(const struct bootm_headers *images)
+{
+	return false;
+}
+
+static inline void fit_verity_free(struct bootm_headers *images) {}
+
+#endif /* FIT_VERITY */
 
 /**
  * image_locate_script() - Locate the raw script in an image
@@ -811,7 +891,7 @@ int fit_get_node_from_config(struct bootm_headers *images,
  * boot_get_fdt() is responsible for finding a valid flat device tree image.
  * Currently supported are the following FDT sources:
  *      - multicomponent kernel/ramdisk/FDT image,
- *      - commandline provided address of decicated FDT image.
+ *      - commandline provided address of dedicated FDT image.
  *
  * Return:
  *     0, if fdt image was found and valid, or skipped
@@ -825,7 +905,7 @@ int boot_get_fdt(void *buf, const char *select, uint arch,
 		 struct bootm_headers *images, char **of_flat_tree,
 		 ulong *of_size);
 
-void boot_fdt_add_mem_rsv_regions(void *fdt_blob);
+void boot_fdt_add_mem_rsv_regions(const void *fdt_blob);
 int boot_relocate_fdt(char **of_flat_tree, ulong *of_size);
 
 int boot_ramdisk_high(ulong rd_data, ulong rd_len, ulong *initrd_start,
@@ -1077,6 +1157,23 @@ int booti_setup(ulong image, ulong *relocated_addr, ulong *size,
 #define FIT_CIPHER_NODENAME	"cipher"
 #define FIT_ALGO_PROP		"algo"
 
+/* dm-verity node */
+#define FIT_VERITY_NODENAME	"dm-verity"
+#define FIT_VERITY_ALGO_PROP	"algo"
+#define FIT_VERITY_DBS_PROP	"data-block-size"
+#define FIT_VERITY_HBS_PROP	"hash-block-size"
+#define FIT_VERITY_NBLK_PROP	"num-data-blocks"
+#define FIT_VERITY_HBLK_PROP	"hash-start-block"
+#define FIT_VERITY_DIGEST_PROP	"digest"
+#define FIT_VERITY_SALT_PROP	"salt"
+
+/* dm-verity error-handling modes (optional boolean property names) */
+#define FIT_VERITY_OPT_RESTART	"restart-on-corruption"
+#define FIT_VERITY_OPT_PANIC	"panic-on-corruption"
+#define FIT_VERITY_OPT_RERR	"restart-on-error"
+#define FIT_VERITY_OPT_PERR	"panic-on-error"
+#define FIT_VERITY_OPT_ONCE	"check-at-most-once"
+
 /* image node */
 #define FIT_DATA_PROP		"data"
 #define FIT_DATA_POSITION_PROP	"data-position"
@@ -1103,6 +1200,9 @@ int booti_setup(ulong image, ulong *relocated_addr, ulong *size,
 #define FIT_STANDALONE_PROP	"standalone"
 #define FIT_SCRIPT_PROP		"script"
 #define FIT_PHASE_PROP		"phase"
+#define FIT_TFA_BL31_PROP	"tfa-bl31"
+#define FIT_TEE_PROP		"tee"
+#define FIT_COMPAT_PROP		"compatible"
 
 #define FIT_MAX_HASH_LEN	HASH_MAX_DIGEST_SIZE
 
@@ -1327,6 +1427,24 @@ int fit_add_verification_data(const char *keydir, const char *keyfile,
 			      const char *cmdname, const char *algo_name,
 			      struct image_summary *summary);
 
+#ifdef USE_HOSTCC
+/**
+ * fit_verity_get_expanded() - look up the cached dm-verity expanded buffer
+ *
+ * After mkimage has run veritysetup on a FILESYSTEM image, the original
+ * data concatenated with the Merkle hash tree is cached in memory keyed
+ * by image name. fit_extract_data() retrieves it to write the external
+ * data section without having to re-read a temporary file from disk.
+ *
+ * @name:	image unit name (FDT node name under /images)
+ * @data:	output -- pointer to cached buffer (do NOT free; lifetime
+ *		ends when mkimage exits)
+ * @size:	output -- size of @data in bytes
+ * Return: 0 if a cache entry exists for @name, -ENOENT otherwise
+ */
+int fit_verity_get_expanded(const char *name, const void **data, size_t *size);
+#endif /* USE_HOSTCC */
+
 /**
  * fit_image_verify_with_data() - Verify an image with given data
  *
@@ -1343,8 +1461,17 @@ int fit_image_verify_with_data(const void *fit, int image_noffset,
 int fit_image_verify(const void *fit, int noffset);
 #if CONFIG_IS_ENABLED(FIT_SIGNATURE)
 int fit_config_verify(const void *fit, int conf_noffset);
+int fit_config_verify_with_key_blob(const void *fit, int conf_noffset,
+				    const void *key_blob);
 #else
 static inline int fit_config_verify(const void *fit, int conf_noffset)
+{
+	return 0;
+}
+
+static inline int fit_config_verify_with_key_blob(const void *fit,
+						  int conf_noffset,
+						  const void *key_blob)
 {
 	return 0;
 }
@@ -1407,6 +1534,10 @@ int fit_check_format(const void *fit, ulong size);
  * Configuration 1 would be picked because the first string in U-Boot's
  * compatible list, "foo,bar", matches a compatible string in the root of fdt1.
  * "bim,bam" in fdt2 matches the second string which isn't as good as fdt1.
+ *
+ * If several configurations match at the same position, the one named by the
+ * 'default' property of the configurations node is preferred, then the first
+ * one listed.
  *
  * As an optimization, the compatible property from the FDT's root node can be
  * copied into the configuration node in the FIT image. This is required to
@@ -1688,7 +1819,7 @@ struct sig_header_s {
  */
 int image_pre_load(ulong addr);
 
-#if defined(USE_HOSTCC)
+#if defined(USE_HOSTCC) && CONFIG_IS_ENABLED(LIBCRYPTO)
 /**
  * rsa_verify_openssl() - Verify a signature against some data with openssl API
  *
@@ -1765,6 +1896,29 @@ int fit_image_decrypt_data(const void *fit,
 struct image_region *fit_region_make_list(const void *fit,
 		struct fdt_region *fdt_regions, int count,
 		struct image_region *region);
+
+/**
+ * fit_config_get_signed_nodes() - Build the list of nodes covered by a config
+ *				   signature
+ *
+ * Collects the paths of the nodes that the configuration signature is
+ * computed over: the root node, the configuration node, and for each image
+ * referenced by the configuration its node, its hash subnodes and its cipher
+ * and dm-verity subnodes. The result is the same node list used when creating
+ * and verifying the signature, and is suitable for passing to
+ * fdt_find_regions().
+ *
+ * @fit:	FIT blob
+ * @conf_noffset: Configuration node offset
+ * @node_inc:	Array to fill with pointers to packed path strings
+ * @max_nodes:	Number of entries in @node_inc
+ * @buf:	Buffer for the packed null-terminated path strings
+ * @buf_len:	Size of @buf
+ * Return: number of entries written to @node_inc, or -ve on error
+ */
+int fit_config_get_signed_nodes(const void *fit, int conf_noffset,
+				char **node_inc, int max_nodes,
+				char *buf, int buf_len);
 
 static inline int fit_image_check_target_arch(const void *fdt, int node)
 {
@@ -2133,7 +2287,7 @@ struct fit_loadable_tbl {
  * _handler is the handler function to call after this image type is loaded
  */
 #define U_BOOT_FIT_LOADABLE_HANDLER(_type, _handler) \
-	ll_entry_declare(struct fit_loadable_tbl, _function, fit_loadable) = { \
+	ll_entry_declare(struct fit_loadable_tbl, _type, fit_loadable) = { \
 		.type = _type, \
 		.handler = _handler, \
 	}

@@ -138,11 +138,9 @@ int run_command_list(const char *cmd, int len, int flag)
 #endif
 	}
 	if (need_buff) {
-		buff = malloc(len + 1);
+		buff = memdup_nul(cmd, len);
 		if (!buff)
 			return 1;
-		memcpy(buff, cmd, len);
-		buff[len] = '\0';
 	}
 #ifdef CONFIG_HUSH_PARSER
 	if (use_hush_old()) {
@@ -295,6 +293,10 @@ err:
 void cli_loop(void)
 {
 	bootstage_mark(BOOTSTAGE_ID_ENTER_CLI_LOOP);
+
+	if (IS_ENABLED(CONFIG_CMDLINE_FLUSH_STDIN))
+		console_flush_stdin();
+
 #if CONFIG_IS_ENABLED(HUSH_PARSER)
 	if (gd->flags & GD_FLG_HUSH_MODERN_PARSER)
 		parse_and_run_file();

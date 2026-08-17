@@ -26,7 +26,7 @@ In order to use HTTPS you will need to compile wget with lwIP support.
 Legacy syntax
 ~~~~~~~~~~~~~
 
-The legacy syntax is supported by the legacy network stack (CONFIG_NET=y)
+The legacy syntax is supported by the legacy network stack (CONFIG_NET_LEGACY=y)
 as well as by the lwIP base network stack (CONFIG_NET_LWIP=y). It supports HTTP
 only.
 
@@ -38,7 +38,7 @@ address
     memory address for the data downloaded
 
 host
-    IP address (or host name if `CONFIG_CMD_DNS` is enabled) of the HTTP
+    IP address (or host name if `CONFIG_DNS` is enabled) of the HTTP
     server, defaults to the value of environment variable *serverip*.
 
 path
@@ -95,7 +95,7 @@ In the example the following steps are executed:
 
 ::
 
-    => setenv autoload no
+    => env set autoload no
     => dhcp
     BOOTP broadcast 1
     *** Unhandled DHCP Option in OFFER/ACK: 23
@@ -141,9 +141,9 @@ https://cacerts.digicert.com/DigiCertTLSRSA4096RootG5.crt.
    Bytes transferred = 1864 (748 hex)
    # Another server not signed against Digicert will fail
    => wget https://www.google.com/
-   Certificate verification failed
 
    HTTP client error 4
+   Certificate verification failed
    # Disable authentication to allow the command to proceed anyways
    => wget cacert none
    => wget https://www.google.com/
@@ -184,15 +184,3 @@ CONFIG_WGET_CACERT=y (for the wget cacert command).
 TCP Selective Acknowledgments in the legacy network stack can be enabled via
 CONFIG_PROT_TCP_SACK=y. This will improve the download speed. Selective
 Acknowledgments are enabled by default with lwIP.
-
-.. note::
-
-    U-Boot currently has no way to verify certificates for HTTPS.
-    A place to store the root CA certificates is needed, and then MBed TLS would
-    need to walk the entire chain. Therefore, man-in-the middle attacks are
-    possible and HTTPS should not be relied upon for payload authentication.
-
-Return value
-------------
-
-The return value $? is 0 (true) on success and 1 (false) otherwise.

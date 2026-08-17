@@ -503,7 +503,6 @@ struct rockchip_mux_route_data {
 struct rockchip_pin_ctrl {
 	struct rockchip_pin_bank	*pin_banks;
 	u32				nr_banks;
-	u32				nr_pins;
 	int				grf_mux_offset;
 	int				pmu_mux_offset;
 	int				grf_drv_offset;
@@ -529,6 +528,7 @@ struct rockchip_pinctrl_priv {
 	struct rockchip_pin_ctrl	*ctrl;
 	struct regmap			*regmap_base;
 	struct regmap			*regmap_pmu;
+	struct regmap			*regmap_ioc1;
 };
 
 extern const struct pinctrl_ops rockchip_pinctrl_ops;

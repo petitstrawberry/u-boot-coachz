@@ -9,6 +9,7 @@
 #include <config.h>		/* core U-Boot definitions */
 #include <log.h>
 #include <spartan2.h>		/* Spartan-II device family */
+#include <time.h>
 
 /* Note: The assumption is that we cannot possibly run fast enough to
  * overrun the device (the Slave Parallel mode can free run at 50MHz).
@@ -51,7 +52,7 @@ static int spartan2_load(xilinx_desc *desc, const void *buf, size_t bsize,
 
 	default:
 		printf ("%s: Unsupported interface type, %d\n",
-				__FUNCTION__, desc->iface);
+				__func__, desc->iface);
 	}
 
 	return ret_val;
@@ -74,7 +75,7 @@ static int spartan2_dump(xilinx_desc *desc, const void *buf, size_t bsize)
 
 	default:
 		printf ("%s: Unsupported interface type, %d\n",
-				__FUNCTION__, desc->iface);
+				__func__, desc->iface);
 	}
 
 	return ret_val;
@@ -233,7 +234,7 @@ static int spartan2_sp_load(xilinx_desc *desc, const void *buf, size_t bsize)
 #endif
 
 	} else {
-		printf ("%s: NULL Interface function table!\n", __FUNCTION__);
+		printf("%s: NULL Interface function table!\n", __func__);
 	}
 
 	return ret_val;
@@ -278,7 +279,7 @@ static int spartan2_sp_dump(xilinx_desc *desc, const void *buf, size_t bsize)
 
 		/* XXX - checksum the data? */
 	} else {
-		printf ("%s: NULL Interface function table!\n", __FUNCTION__);
+		printf("%s: NULL Interface function table!\n", __func__);
 	}
 
 	return ret_val;
@@ -422,7 +423,7 @@ static int spartan2_ss_load(xilinx_desc *desc, const void *buf, size_t bsize)
 #endif
 
 	} else {
-		printf ("%s: NULL Interface function table!\n", __FUNCTION__);
+		printf("%s: NULL Interface function table!\n", __func__);
 	}
 
 	return ret_val;
@@ -433,7 +434,7 @@ static int spartan2_ss_dump(xilinx_desc *desc, const void *buf, size_t bsize)
 	/* Readback is only available through the Slave Parallel and         */
 	/* boundary-scan interfaces.                                         */
 	printf ("%s: Slave Serial Dumping is unavailable\n",
-			__FUNCTION__);
+			__func__);
 	return FPGA_FAIL;
 }
 

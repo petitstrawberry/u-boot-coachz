@@ -9,14 +9,15 @@
 
 #include <command.h>
 #include <env.h>
+#include <fdt_support.h>
 #include <image.h>
+#include <malloc.h>
+#include <mapmem.h>
+#include <asm/global_data.h>
+#include <asm/io.h>
 #include <linux/ctype.h>
 #include <linux/types.h>
-#include <asm/global_data.h>
 #include <linux/libfdt.h>
-#include <fdt_support.h>
-#include <mapmem.h>
-#include <asm/io.h>
 
 #define MAX_LEVEL	32		/* how deeply nested we will go */
 #define SCRATCHPAD	1024		/* bytes of scratchpad memory */
@@ -91,18 +92,21 @@ static int fdt_value_env_set(const void *nodep, int len,
 
 		sprintf(buf, "0x%08X", fdt32_to_cpu(*(nodec + index)));
 		env_set(var, buf);
-	} else if (len % 4 == 0 && len <= 20) {
+	} else {
 		/* Needed to print things like sha1 hashes. */
-		char buf[41];
+		char *buf;
+		const unsigned int *nodec = (const unsigned int *)nodep;
 		int i;
 
-		for (i = 0; i < len; i += sizeof(unsigned int))
+		buf = malloc(2 * len + 7);
+		if (!buf)
+			return CMD_RET_FAILURE;
+		for (i = 0; i < len; i += 4)
 			sprintf(buf + (i * 2), "%08x",
-				*(unsigned int *)(nodep + i));
+				fdt32_to_cpu(*nodec++));
+		buf[2 * len] = 0;
 		env_set(var, buf);
-	} else {
-		printf("error: unprintable value\n");
-		return 1;
+		free(buf);
 	}
 	return 0;
 }
@@ -691,9 +695,9 @@ static int do_fdt(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 			       fdt_strerror(err));
 			return CMD_RET_FAILURE;
 		}
-#ifdef CONFIG_ARCH_KEYSTONE
-		ft_board_setup_ex(working_fdt, gd->bd);
-#endif
+
+		if (IS_ENABLED(CONFIG_OF_BOARD_SETUP_EXTENDED))
+			ft_board_setup_ex(working_fdt, gd->bd);
 	}
 #endif
 	/* Create a chosen node */
@@ -715,22 +719,19 @@ static int do_fdt(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 	} else if (strncmp(argv[1], "che", 3) == 0) {
 		int cfg_noffset;
 		int ret;
-		unsigned long addr;
-		struct fdt_header *blob;
+		struct fdt_header *key_blob;
 
 		if (!working_fdt)
 			return CMD_RET_FAILURE;
 
 		if (argc > 2) {
-			addr = hextoul(argv[2], NULL);
-			blob = map_sysmem(addr, 0);
+			key_blob = map_sysmem(hextoul(argv[2], NULL), 0);
 		} else {
-			blob = (struct fdt_header *)gd->fdt_blob;
+			key_blob = (struct fdt_header *)gd->fdt_blob;
 		}
-		if (!fdt_valid(&blob))
+		if (!fdt_valid(&key_blob))
 			return 1;
 
-		gd->fdt_blob = blob;
 		cfg_noffset = fit_conf_get_node(working_fdt, NULL);
 		if (cfg_noffset < 0) {
 			printf("Could not find configuration node: %s\n",
@@ -738,7 +739,8 @@ static int do_fdt(struct cmd_tbl *cmdtp, int flag, int argc, char *const argv[])
 			return CMD_RET_FAILURE;
 		}
 
-		ret = fit_config_verify(working_fdt, cfg_noffset);
+		ret = fit_config_verify_with_key_blob(working_fdt, cfg_noffset,
+						      key_blob);
 		if (ret == 0)
 			return CMD_RET_SUCCESS;
 		else

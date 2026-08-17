@@ -11,6 +11,7 @@
  *  Xilinx FPGA support
  */
 
+#include <env.h>
 #include <fpga.h>
 #include <log.h>
 #include <virtex2.h>
@@ -49,7 +50,10 @@ int fpga_loadbitstream(int devnum, char *fpgadata, size_t size,
 
 	dataptr = (unsigned char *)fpgadata;
 	/* Find out fpga_description */
-	desc = fpga_validate(devnum, dataptr, 0, (char *)__func__);
+	desc = fpga_validate(devnum, dataptr, 0);
+	if (!desc)
+		return FPGA_FAIL;
+
 	/* Assign xilinx device description */
 	xdesc = desc->devdesc;
 
@@ -89,7 +93,11 @@ int fpga_loadbitstream(int devnum, char *fpgadata, size_t size,
 			       __func__);
 			printf("%s: Bitstream ID %s, current device ID %d/%s\n",
 			       __func__, dataptr, devnum, xdesc->name);
-			return FPGA_FAIL;
+			if (!CONFIG_IS_ENABLED(ENV_SUPPORT) ||
+			    env_get_yesno("fpga_skip_idcheck") != 1)
+				return FPGA_FAIL;
+
+			printf("%s: Skipping ID check\n", __func__);
 		}
 	} else {
 		printf("%s: Please fill correct device ID to xilinx_desc\n",
@@ -141,8 +149,8 @@ int fpga_loadbitstream(int devnum, char *fpgadata, size_t size,
 int xilinx_load(xilinx_desc *desc, const void *buf, size_t bsize,
 		bitstream_type bstype, int flags)
 {
-	if (!xilinx_validate (desc, (char *)__FUNCTION__)) {
-		printf ("%s: Invalid device descriptor\n", __FUNCTION__);
+	if (!xilinx_validate(desc, (char *)__func__)) {
+		printf("%s: Invalid device descriptor\n", __func__);
 		return FPGA_FAIL;
 	}
 
@@ -192,8 +200,8 @@ int xilinx_loads(xilinx_desc *desc, const void *buf, size_t bsize,
 
 int xilinx_dump(xilinx_desc *desc, const void *buf, size_t bsize)
 {
-	if (!xilinx_validate (desc, (char *)__FUNCTION__)) {
-		printf ("%s: Invalid device descriptor\n", __FUNCTION__);
+	if (!xilinx_validate(desc, (char *)__func__)) {
+		printf("%s: Invalid device descriptor\n", __func__);
 		return FPGA_FAIL;
 	}
 
@@ -209,7 +217,7 @@ int xilinx_info(xilinx_desc *desc)
 {
 	int ret_val = FPGA_FAIL;
 
-	if (xilinx_validate (desc, (char *)__FUNCTION__)) {
+	if (xilinx_validate(desc, (char *)__func__)) {
 		printf ("Family:        \t");
 		switch (desc->family) {
 		case xilinx_spartan2:
@@ -285,7 +293,7 @@ int xilinx_info(xilinx_desc *desc)
 
 		ret_val = FPGA_SUCCESS;
 	} else {
-		printf ("%s: Invalid device descriptor\n", __FUNCTION__);
+		printf("%s: Invalid device descriptor\n", __func__);
 	}
 
 	return ret_val;

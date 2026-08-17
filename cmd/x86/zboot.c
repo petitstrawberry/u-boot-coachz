@@ -8,6 +8,7 @@
 #define LOG_CATEGORY	LOGC_BOOT
 
 #include <command.h>
+#include <env.h>
 #include <mapmem.h>
 #include <vsprintf.h>
 #include <asm/zimage.h>
@@ -64,9 +65,6 @@ static int do_zboot_setup(struct cmd_tbl *cmdtp, int flag, int argc,
 		puts("Setting up boot parameters failed ...\n");
 		return CMD_RET_FAILURE;
 	}
-
-	if (zboot_setup())
-		return CMD_RET_FAILURE;
 
 	return 0;
 }

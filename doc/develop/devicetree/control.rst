@@ -79,7 +79,7 @@ regularly synced with the Linux kernel and hence no need for manual devicetree
 sync. You may find that the `dts/upstream/` already has a suitable devicetree
 file for your board. Look in `dts/upstream/src/<arch>/<vendor>`.
 
-If not you might find other boards with suitable files that you can
+If not, you might find other boards with suitable files that you can
 modify to your needs. Look in the board directories for files with a
 .dts extension.
 
@@ -98,7 +98,7 @@ Linux kernel release. To sync the `dts/upstream/` subtree, run::
 
     ./tools/update-subtree.sh pull dts <devicetree-rebasing-release-tag>
 
-If required it is also possible to cherry-pick fixes from the
+If required, it is also possible to cherry-pick fixes from the
 devicetree-rebasing repository prior to next sync, usage::
 
     ./tools/update-subtree.sh pick dts <devicetree-rebasing-commit-id>
@@ -192,7 +192,7 @@ With `dts/upstream` Git subtree, it is ensured that devicetree files in U-Boot
 are an exact copy of those in Linux kernel available under
 `dts/upstream/src/<arch>/<vendor>`.
 
-U-Boot is of course a very different project from Linux, e.g. it operates under
+U-Boot is, of course, a very different project from Linux, e.g. it operates under
 much more restrictive memory and code-size constraints. Where Linux may use a
 full clock driver with Common Clock Format (CCF) to find the input clock to the
 UART, U-Boot typically wants to output a banner as early as possible before too
@@ -212,7 +212,7 @@ order::
    <CONFIG_SYS_VENDOR>-u-boot.dtsi
    u-boot.dtsi
 
-Only one of these is selected but of course you can #include another one within
+Only one of these is selected, but, of course, you can #include another one within
 that file, to create a hierarchy of shared files.
 
 
@@ -232,6 +232,64 @@ outside the U-Boot repository. You can use `DEVICE_TREE_INCLUDES` Kconfig
 option to specify a list of .dtsi files that will also be included when
 building .dtb files.
 
+Scripts embedded in control DTB
+-------------------------------
+
+The `DEVICE_TREE_INCLUDES` option can also be used to make the control
+DTB serve double duty as a FIT image. By including a `scripts.dtsi`
+file containing something like::
+
+  / {
+	images {
+		default = "boot";
+		boot {
+			description = "Bootscript";
+			data = /incbin/("boot.sh");
+			type = "script";
+			compression = "none";
+		};
+		factory-reset {
+			description = "Script for performing factory reset";
+			data = /incbin/("factory-reset.sh");
+			type = "script";
+			compression = "none";
+		};
+	};
+  };
+
+one can call those scripts using the `source` command in the U-Boot shell::
+
+  source ${fdtcontroladdr}:boot
+
+or just ``source ${fdtcontroladdr}`` for invoking the default.
+
+Since one does not need to separately build a "real" FIT image
+containing those scripts, this simplifies both the build process and
+the boot logic, as the latter does not need to first load the FIT
+image from storage.
+
+Another advantage is that when the bootloader and boot script must be
+updated together, it is easier to achieve a guaranteed atomic update
+when the boot script is embedded inside the U-Boot binary, instead of
+stored separately.
+
+For the above to work, one must enable the `CONTROL_DTB_AS_FIT` config
+option, which will (when the address passed to the `source` command is
+the address of U-Boot's control DTB) elide certain sanity checks that
+are normally done: With the above `.dtsi` snippet, the control DTB
+does not quite become a "real" FIT image - it lacks `timestamp` and
+`description` properties, but more importantly, FIT images cannot
+contain nodes with `@` in their names (unit addresses) anywhere, and
+the control DTB obviously does have such nodes.
+
+This is not a security problem, as the control DTB is necessarily
+trusted. In any secure boot setup where the bootloader is verified,
+that mechanism must also include verification of the control DTB. So
+in fact, since the scripts embedded this way are then also
+automatically verified, it simplifies implementation of secure
+boot. When using a separate FIT image, one must build it with
+appropriate signatures, just as when building a FIT image containing a
+kernel/dtb/initramfs.
 
 Devicetree bindings schema checks
 ---------------------------------
@@ -282,13 +340,13 @@ U-Boot can be divided into three phases: TPL, SPL and U-Boot proper.
 
 The full devicetree is available to U-Boot proper, but normally only a subset
 (or none at all) is available to TPL and SPL. See 'Pre-Relocation Support' and
-'SPL Support' in doc/driver-model/design.rst for more details.
+'SPL Support' in :doc:`/develop/driver-model/design` for more details.
 
 
 Using several DTBs in the SPL (SPL_MULTI_DTB_FIT Kconfig option)
 ----------------------------------------------------------------
 In some rare cases it is desirable to let SPL be able to select one DTB among
-many. This usually not very useful as the DTB for the SPL is small and usually
+many. This is usually not very useful as the DTB for the SPL is small and usually
 fits several platforms. However the DTB sometimes include information that do
 work on several platforms (like IO tuning parameters).
 In this case it is possible to use SPL_MULTI_DTB_FIT Kconfig option. This option
@@ -309,8 +367,8 @@ Limitations
 Devicetrees can help reduce the complexity of supporting variants of boards
 which use the same SOC / CPU.
 
-However U-Boot is designed to build for a single architecture type and CPU
-type. So for example it is not possible to build a single ARM binary
+However, U-Boot is designed to build for a single architecture type and CPU
+type. So, for example, it is not possible to build a single ARM binary
 which runs on your AT91 and OMAP boards, relying on an fdt to configure
 the various features. This is because you must select one of
 the CPU families within arch/arm/cpu/arm926ejs (omap or at91) at build
@@ -328,7 +386,7 @@ files are pulled in, and the fdt controls *how* those files work.
 History
 -------
 
-U-Boot configuration was previous done using CONFIG options in the board
+U-Boot configuration was previously done using CONFIG options in the board
 config file. This eventually got out of hand with nearly 10,000 options.
 
 U-Boot adopted devicetrees around the same time as Linux and early boards

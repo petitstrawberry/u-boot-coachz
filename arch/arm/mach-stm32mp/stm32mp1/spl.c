@@ -90,11 +90,6 @@ void spl_display_print(void)
 }
 #endif
 
-__weak int board_early_init_f(void)
-{
-	return 0;
-}
-
 uint32_t stm32mp_get_dram_size(void)
 {
 	struct ram_info ram;
@@ -204,10 +199,12 @@ void board_init_f(ulong dummy)
 	/* enable console uart printing */
 	preloader_console_init();
 
-	ret = board_early_init_f();
-	if (ret) {
-		log_debug("board_early_init_f() failed: %d\n", ret);
-		hang();
+	if (IS_ENABLED(CONFIG_BOARD_EARLY_INIT_F)) {
+		ret = board_early_init_f();
+		if (ret) {
+			log_debug("board_early_init_f() failed: %d\n", ret);
+			hang();
+		}
 	}
 
 	ret = uclass_get_device(UCLASS_RAM, 0, &dev);
@@ -220,10 +217,11 @@ void board_init_f(ulong dummy)
 	 * activate cache on DDR only when DDR is fully initialized
 	 * to avoid speculative access and issue in get_ram_size()
 	 */
-	if (!CONFIG_IS_ENABLED(SYS_DCACHE_OFF))
+	if (!CONFIG_IS_ENABLED(SYS_DCACHE_OFF) && !IS_ENABLED(CONFIG_STM32MP13X)) {
 		mmu_set_region_dcache_behaviour(STM32_DDR_BASE,
 						CONFIG_DDR_CACHEABLE_SIZE,
 						DCACHE_DEFAULT_OPTION);
+	}
 }
 
 void spl_board_prepare_for_boot(void)

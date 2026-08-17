@@ -7,6 +7,7 @@
 #include <dwc3-uboot.h>
 #include <efi.h>
 #include <efi_loader.h>
+#include <env.h>
 #include <errno.h>
 #include <miiphy.h>
 #include <netdev.h>
@@ -24,8 +25,6 @@
 #include <linux/delay.h>
 #include <linux/kernel.h>
 #include <power/pmic.h>
-
-DECLARE_GLOBAL_DATA_PTR;
 
 #ifdef CONFIG_NAND_MXS
 static void setup_gpmi_nand(void)

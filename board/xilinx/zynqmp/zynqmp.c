@@ -14,6 +14,7 @@
 #include <efi_loader.h>
 #include <init.h>
 #include <log.h>
+#include <mtd.h>
 #include <net.h>
 #include <sata.h>
 #include <ahci.h>
@@ -23,7 +24,6 @@
 #include <malloc.h>
 #include <memalign.h>
 #include <wdt.h>
-#include <asm/arch/clk.h>
 #include <asm/arch/hardware.h>
 #include <asm/arch/sys_proto.h>
 #include <asm/arch/psu_init_gpl.h>
@@ -182,6 +182,23 @@ int board_init(void)
 			zynqmppl.name = strdup(name);
 			fpga_init();
 			fpga_add(fpga_xilinx, &zynqmppl);
+
+			/*
+			 * zu63dr_SE and zu67dr_SE share ID 0x046D7093.
+			 * Register zu63dr_SE as alternate device.
+			 */
+			if (!strcmp(name, "zu67dr_SE")) {
+				xilinx_desc *alt;
+
+				alt = calloc(1, sizeof(*alt));
+				if (!alt) {
+					log_err("Failed to allocate alt FPGA descriptor\n");
+				} else {
+					*alt = zynqmppl;
+					alt->name = "zu63dr_SE";
+					fpga_add(fpga_xilinx, alt);
+				}
+			}
 		}
 	}
 #endif
@@ -196,26 +213,11 @@ int board_init(void)
 
 int board_early_init_r(void)
 {
-	u32 val;
-
 	if (current_el() != 3)
 		return 0;
 
-	val = readl(&crlapb_base->timestamp_ref_ctrl);
-	val &= ZYNQMP_CRL_APB_TIMESTAMP_REF_CTRL_CLKACT;
+	zynqmp_timer_setup();
 
-	if (!val) {
-		val = readl(&crlapb_base->timestamp_ref_ctrl);
-		val |= ZYNQMP_CRL_APB_TIMESTAMP_REF_CTRL_CLKACT;
-		writel(val, &crlapb_base->timestamp_ref_ctrl);
-
-		/* Program freq register in System counter */
-		writel(zynqmp_get_system_timer_freq(),
-		       &iou_scntr_secure->base_frequency_id_register);
-		/* And enable system counter */
-		writel(ZYNQMP_IOU_SCNTR_COUNTER_CONTROL_REGISTER_EN,
-		       &iou_scntr_secure->counter_control_register);
-	}
 	return 0;
 }
 
@@ -261,8 +263,8 @@ int dram_init(void)
 #else
 int dram_init_banksize(void)
 {
-	gd->bd->bi_dram[0].start = CFG_SYS_SDRAM_BASE;
-	gd->bd->bi_dram[0].size = get_effective_memsize();
+	gd->dram[0].start = CFG_SYS_SDRAM_BASE;
+	gd->dram[0].size = get_effective_memsize();
 
 	mem_map_fill();
 
@@ -292,7 +294,7 @@ void reset_cpu(void)
 	 * will send command over IPI and requires pmufw to be present.
 	 */
 	xilinx_pm_request(PM_RESET_ASSERT, ZYNQMP_PM_RESET_SOFT,
-			  PM_RESET_ACTION_ASSERT, 0, 0, NULL);
+			  PM_RESET_ACTION_ASSERT, 0, 0, 0, 0, NULL);
 }
 #endif
 
@@ -523,10 +525,6 @@ int board_late_init(void)
 {
 	int ret, multiboot;
 
-#if defined(CONFIG_USB_ETHER) && !defined(CONFIG_USB_GADGET_DOWNLOAD)
-	usb_ether_init();
-#endif
-
 	if (IS_ENABLED(CONFIG_EFI_HAVE_CAPSULE_SUPPORT))
 		configure_capsule_updates();
 
@@ -627,6 +625,10 @@ enum env_location env_get_location(enum env_operation op, int prio)
 	case QSPI_MODE_32BIT:
 		if (IS_ENABLED(CONFIG_ENV_IS_IN_SPI_FLASH))
 			return ENVL_SPI_FLASH;
+		if (IS_ENABLED(CONFIG_ENV_IS_IN_FAT))
+			return ENVL_FAT;
+		if (IS_ENABLED(CONFIG_ENV_IS_IN_EXT4))
+			return ENVL_EXT4;
 		return ENVL_NOWHERE;
 	case JTAG_MODE:
 	default:

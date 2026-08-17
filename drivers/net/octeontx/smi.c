@@ -10,14 +10,11 @@
 #include <pci.h>
 #include <pci_ids.h>
 #include <phy.h>
-#include <asm/global_data.h>
 #include <asm/io.h>
 #include <linux/ctype.h>
 #include <linux/delay.h>
 
 #define PCI_DEVICE_ID_OCTEONTX_SMI 0xA02B
-
-DECLARE_GLOBAL_DATA_PTR;
 
 enum octeontx_smi_mode {
 	CLAUSE22 = 0,
@@ -338,7 +335,8 @@ int octeontx_smi_probe(struct udevice *dev)
 		if (!bus || !priv) {
 			printf("Failed to allocate OcteonTX MDIO bus # %u\n",
 			       dev_seq(dev));
-			return -1;
+			ret = -ENOMEM;
+			goto error_ret;
 		}
 
 		bus->read = octeontx_phy_read;
@@ -355,9 +353,16 @@ int octeontx_smi_probe(struct udevice *dev)
 
 		ret = mdio_register(bus);
 		if (ret)
-			return ret;
+			goto error_ret;
 	}
 	return 0;
+
+error_ret:
+	if (bus)
+		free(bus);
+	if (priv)
+		free(priv);
+	return ret;
 }
 
 static const struct udevice_id octeontx_smi_ids[] = {

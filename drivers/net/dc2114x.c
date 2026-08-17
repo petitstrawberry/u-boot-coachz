@@ -3,6 +3,7 @@
 #include <asm/io.h>
 #include <cpu_func.h>
 #include <dm.h>
+#include <env.h>
 #include <malloc.h>
 #include <net.h>
 #include <netdev.h>
@@ -652,7 +653,7 @@ static int dc2114x_of_to_plat(struct udevice *dev)
 	struct eth_pdata *plat = dev_get_plat(dev);
 	struct dc2114x_priv *priv = dev_get_priv(dev);
 
-	plat->iobase = (phys_addr_t)map_physmem((phys_addr_t)devfdt_get_addr(dev), 0, MAP_NOCACHE);
+	plat->iobase = (phys_addr_t)dev_remap_addr(dev);
 	priv->iobase = (void *)plat->iobase;
 
 	return 0;

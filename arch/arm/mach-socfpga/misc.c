@@ -11,6 +11,7 @@
 #include <hang.h>
 #include <watchdog.h>
 #include <fdtdec.h>
+#include <dm/ofnode.h>
 #include <linux/libfdt.h>
 #include <linux/printk.h>
 #include <miiphy.h>
@@ -53,7 +54,7 @@ struct bsel bsel_str[] = {
 
 int dram_init(void)
 {
-#if CONFIG_IS_ENABLED(HANDOFF) && IS_ENABLED(CONFIG_TARGET_SOCFPGA_AGILEX5)
+#if CONFIG_IS_ENABLED(HANDOFF) && IS_ENABLED(CONFIG_ARCH_SOCFPGA_AGILEX5)
 	struct spl_handoff *ho;
 
 	ho = bloblist_find(BLOBLISTT_U_BOOT_SPL_HANDOFF, sizeof(*ho));
@@ -64,7 +65,7 @@ int dram_init(void)
 #else
 	if (fdtdec_setup_mem_size_base() != 0)
 		return -EINVAL;
-#endif /* HANDOFF && CONFIG_TARGET_SOCFPGA_AGILEX5 */
+#endif /* HANDOFF && CONFIG_ARCH_SOCFPGA_AGILEX5 */
 
 	return 0;
 }
@@ -221,9 +222,9 @@ static int do_bridge(struct cmd_tbl *cmdtp, int flag, int argc,
 }
 
 U_BOOT_CMD(bridge, 3, 1, do_bridge,
-	   "SoCFPGA HPS FPGA bridge control",
-	   "enable [mask] - Enable HPS-to-FPGA, FPGA-to-HPS, LWHPS-to-FPGA bridges\n"
-	   "bridge disable [mask] - Enable HPS-to-FPGA, FPGA-to-HPS, LWHPS-to-FPGA bridges\n"
+	   "GEN5 SoCFPGA HPS FPGA bridge control",
+	   "enable [mask] - Enable HPS-to-FPGA (Bit 0), LWHPS-to-FPGA (Bit 1), FPGA-to-HPS (Bit 2) bridges\n"
+	   "bridge disable [mask] - Disable HPS-to-FPGA (Bit 0), LWHPS-to-FPGA (Bit 1), FPGA-to-HPS (Bit 2) bridges\n"
 	   ""
 );
 
@@ -260,13 +261,21 @@ void socfpga_get_managers_addr(void)
 	if (ret)
 		hang();
 
-	if (IS_ENABLED(CONFIG_TARGET_SOCFPGA_AGILEX))
-		ret = socfpga_get_base_addr("intel,agilex-clkmgr",
-					    &socfpga_clkmgr_base);
-	else if (IS_ENABLED(CONFIG_TARGET_SOCFPGA_N5X))
+	if (!IS_ENABLED(CONFIG_ARCH_SOCFPGA_AGILEX) &&
+	    !IS_ENABLED(CONFIG_ARCH_SOCFPGA_AGILEX7M) &&
+	    !IS_ENABLED(CONFIG_ARCH_SOCFPGA_AGILEX5)) {
+		ret = socfpga_get_base_addr("altr,sys-mgr",
+					    &socfpga_sysmgr_base);
+		if (ret)
+			hang();
+	}
+
+	if (IS_ENABLED(CONFIG_ARCH_SOCFPGA_N5X))
 		ret = socfpga_get_base_addr("intel,n5x-clkmgr",
 					    &socfpga_clkmgr_base);
-	else if (!IS_ENABLED(CONFIG_TARGET_SOCFPGA_AGILEX5))
+	else if (!IS_ENABLED(CONFIG_ARCH_SOCFPGA_AGILEX) &&
+		 !IS_ENABLED(CONFIG_ARCH_SOCFPGA_AGILEX7M) &&
+		 !IS_ENABLED(CONFIG_ARCH_SOCFPGA_AGILEX5))
 		ret = socfpga_get_base_addr("altr,clk-mgr",
 					    &socfpga_clkmgr_base);
 
@@ -274,17 +283,24 @@ void socfpga_get_managers_addr(void)
 		hang();
 }
 
-void socfpga_get_sys_mgr_addr(const char *compat)
+void socfpga_get_sys_mgr_addr(void)
 {
 	int ret;
-	struct udevice *sysmgr_dev;
+	struct udevice *dev;
 
-	ret = uclass_get_device_by_name(UCLASS_NOP, compat, &sysmgr_dev);
+	ofnode node = ofnode_get_aliases_node("sysmgr");
+
+	if (!ofnode_valid(node)) {
+		printf("'sysmgr' alias not found in device tree\n");
+		hang();
+	}
+
+	ret = uclass_get_device_by_ofnode(UCLASS_NOP, node, &dev);
 	if (ret) {
 		printf("Altera system manager init failed: %d\n", ret);
 		hang();
 	} else {
-		socfpga_sysmgr_base = (phys_addr_t)dev_read_addr(sysmgr_dev);
+		socfpga_sysmgr_base = (phys_addr_t)dev_read_addr(dev);
 	}
 }
 

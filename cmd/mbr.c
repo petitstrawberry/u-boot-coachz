@@ -10,6 +10,7 @@
 
 #include <blk.h>
 #include <command.h>
+#include <env.h>
 #include <malloc.h>
 #include <part.h>
 #include <vsprintf.h>
@@ -72,7 +73,7 @@ static bool found_key(const char *str, const char *key)
 
 	strcopy = strdup(str);
 	if (!strcopy)
-		return NULL;
+		return false;
 
 	s = strcopy;
 	while (s) {

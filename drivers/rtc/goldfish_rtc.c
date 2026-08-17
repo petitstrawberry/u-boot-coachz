@@ -9,6 +9,7 @@
 
 #include <div64.h>
 #include <dm.h>
+#include <goldfish_rtc.h>
 #include <mapmem.h>
 #include <rtc.h>
 #include <linux/io.h>
@@ -39,8 +40,8 @@ static int goldfish_rtc_get(struct udevice *dev, struct rtc_time *time)
 	u64 time_low;
 	u64 now;
 
-	time_low = ioread32(base + GOLDFISH_TIME_LOW);
-	time_high = ioread32(base + GOLDFISH_TIME_HIGH);
+	time_low = __raw_readl(base + GOLDFISH_TIME_LOW);
+	time_high = __raw_readl(base + GOLDFISH_TIME_HIGH);
 	now = (time_high << 32) | time_low;
 
 	do_div(now, 1000000000U);
@@ -61,8 +62,8 @@ static int goldfish_rtc_set(struct udevice *dev, const struct rtc_time *time)
 		return -EINVAL;
 
 	now = rtc_mktime(time) * 1000000000ULL;
-	iowrite32(now >> 32, base + GOLDFISH_TIME_HIGH);
-	iowrite32(now, base + GOLDFISH_TIME_LOW);
+	__raw_writel(now >> 32, base + GOLDFISH_TIME_HIGH);
+	__raw_writel(now, base + GOLDFISH_TIME_LOW);
 
 	if (time->tm_isdst > 0)
 		priv->isdst = 1;
@@ -74,15 +75,31 @@ static int goldfish_rtc_set(struct udevice *dev, const struct rtc_time *time)
 	return 0;
 }
 
-static int goldfish_rtc_probe(struct udevice *dev)
+static int goldfish_rtc_of_to_plat(struct udevice *dev)
 {
-	struct goldfish_rtc *priv = dev_get_priv(dev);
+	struct goldfish_rtc_plat *plat = dev_get_plat(dev);
 	fdt_addr_t addr;
+
+	plat->reg = 0;
 
 	addr = dev_read_addr(dev);
 	if (addr == FDT_ADDR_T_NONE)
 		return -EINVAL;
-	priv->base = map_sysmem(addr, 0x20);
+
+	plat->reg = addr;
+
+	return 0;
+}
+
+static int goldfish_rtc_probe(struct udevice *dev)
+{
+	struct goldfish_rtc_plat *plat = dev_get_plat(dev);
+	struct goldfish_rtc *priv = dev_get_priv(dev);
+
+	if (!plat->reg)
+		return -EINVAL;
+
+	priv->base = map_sysmem(plat->reg, 0x20);
 
 	return 0;
 }
@@ -103,5 +120,7 @@ U_BOOT_DRIVER(rtc_goldfish) = {
 	.ops		= &goldfish_rtc_ops,
 	.probe		= goldfish_rtc_probe,
 	.of_match	= goldfish_rtc_of_match,
+	.of_to_plat = goldfish_rtc_of_to_plat,
+	.plat_auto  = sizeof(struct goldfish_rtc_plat),
 	.priv_auto	= sizeof(struct goldfish_rtc),
 };

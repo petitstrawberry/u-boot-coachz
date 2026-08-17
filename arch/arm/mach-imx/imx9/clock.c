@@ -10,7 +10,6 @@
 #include <asm/arch/imx-regs.h>
 #include <asm/arch/ccm_regs.h>
 #include <asm/arch/sys_proto.h>
-#include <asm/global_data.h>
 #include <asm/io.h>
 #include <div64.h>
 #include <errno.h>
@@ -18,8 +17,6 @@
 #include <linux/delay.h>
 #include <log.h>
 #include <phy.h>
-
-DECLARE_GLOBAL_DATA_PTR;
 
 static struct anatop_reg *ana_regs = (struct anatop_reg *)ANATOP_BASE_ADDR;
 
@@ -481,6 +478,7 @@ u32 get_clk_src_rate(enum ccm_clk_src source)
 	switch (source) {
 	case ARM_PLL_CLK:
 		ctrl = readl(&ana_regs->arm_pll.ctrl.reg);
+		break;
 	case AUDIO_PLL_CLK:
 		ctrl = readl(&ana_regs->audio_pll.ctrl.reg);
 		break;

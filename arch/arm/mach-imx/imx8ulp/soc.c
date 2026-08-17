@@ -56,7 +56,7 @@ int mmc_get_env_dev(void)
 
 	if (ret != ROM_API_OKAY) {
 		puts("ROMAPI: failure at query_boot_info\n");
-		return CONFIG_SYS_MMC_ENV_DEV;
+		return CONFIG_ENV_MMC_DEVICE_INDEX;
 	}
 
 	boot_type = boot >> 16;
@@ -64,7 +64,7 @@ int mmc_get_env_dev(void)
 
 	/* If not boot from sd/mmc, use default value */
 	if (boot_type != BOOT_TYPE_SD && boot_type != BOOT_TYPE_MMC)
-		return env_get_ulong("mmcdev", 10, CONFIG_SYS_MMC_ENV_DEV);
+		return env_get_ulong("mmcdev", 10, CONFIG_ENV_MMC_DEVICE_INDEX);
 
 	return board_mmc_get_env_dev(boot_instance);
 }
@@ -254,11 +254,6 @@ static char *get_reset_cause(char *ret)
 }
 
 #if defined(CONFIG_DISPLAY_CPUINFO)
-const char *get_imx_type(u32 imxtype)
-{
-	return "8ULP";
-}
-
 int print_cpuinfo(void)
 {
 	u32 cpurev;
@@ -266,8 +261,7 @@ int print_cpuinfo(void)
 
 	cpurev = get_cpu_rev();
 
-	printf("CPU:   i.MX%s rev%d.%d at %d MHz\n",
-	       get_imx_type((cpurev & 0xFF000) >> 12),
+	printf("CPU:   i.MX8ULP rev%d.%d at %d MHz\n",
 	       (cpurev & 0x000F0) >> 4, (cpurev & 0x0000F) >> 0,
 	       mxc_get_clock(MXC_ARM_CLK) / 1000000);
 
@@ -279,7 +273,7 @@ int print_cpuinfo(void)
 	if (!ret) {
 		ret = thermal_get_temp(udev, &temp);
 		if (!ret)
-			printf("CPU current temperature: %d\n", temp);
+			printf("CPU current temperature: %dC\n", temp / 1000);
 		else
 			debug(" - failed to get CPU current temperature\n");
 	} else {
@@ -343,7 +337,17 @@ static void disable_wdog(void __iomem *wdog_base)
 
 void init_wdog(void)
 {
-	disable_wdog((void __iomem *)WDG3_RBASE);
+	ofnode node;
+
+	ofnode_for_each_compatible_node(node, "fsl,imx8ulp-wdt") {
+		phys_addr_t base;
+
+		base = ofnode_get_addr(node);
+		if (base == FDT_ADDR_T_NONE)
+			continue;
+
+		disable_wdog((void __iomem *)base);
+	}
 }
 
 static struct mm_region imx8ulp_arm64_mem_map[] = {
@@ -384,7 +388,22 @@ static struct mm_region imx8ulp_arm64_mem_map[] = {
 		/* SRAM0 (align with 2M) */
 		.virt = 0x22000000UL,
 		.phys = 0x22000000UL,
-		.size = 0x200000UL,
+		.size = 0x1f000UL,
+		.attrs = PTE_BLOCK_MEMTYPE(MT_NORMAL) |
+			 PTE_BLOCK_OUTER_SHARE |
+			 PTE_BLOCK_PXN | PTE_BLOCK_UXN
+	}, {
+		/* SCMI shared memory buffer must be mapped as non-cacheable. */
+		.virt = 0x2201f000UL,
+		.phys = 0x2201f000UL,
+		.size = 0x1000UL,
+		.attrs = PTE_BLOCK_MEMTYPE(MT_DEVICE_NGNRNE) |
+			 PTE_BLOCK_NON_SHARE |
+			 PTE_BLOCK_PXN | PTE_BLOCK_UXN
+	}, {
+		.virt = 0x22020000UL,
+		.phys = 0x22020000UL,
+		.size = 0x1e0000UL,
 		.attrs = PTE_BLOCK_MEMTYPE(MT_NORMAL) |
 			 PTE_BLOCK_OUTER_SHARE |
 			 PTE_BLOCK_PXN | PTE_BLOCK_UXN
@@ -487,11 +506,11 @@ void enable_caches(void)
 
 		while (i < CONFIG_NR_DRAM_BANKS &&
 		       entry < ARRAY_SIZE(imx8ulp_arm64_mem_map)) {
-			if (gd->bd->bi_dram[i].start == 0)
+			if (gd->dram[i].start == 0)
 				break;
-			imx8ulp_arm64_mem_map[entry].phys = gd->bd->bi_dram[i].start;
-			imx8ulp_arm64_mem_map[entry].virt = gd->bd->bi_dram[i].start;
-			imx8ulp_arm64_mem_map[entry].size = gd->bd->bi_dram[i].size;
+			imx8ulp_arm64_mem_map[entry].phys = gd->dram[i].start;
+			imx8ulp_arm64_mem_map[entry].virt = gd->dram[i].start;
+			imx8ulp_arm64_mem_map[entry].size = gd->dram[i].size;
 			imx8ulp_arm64_mem_map[entry].attrs = attrs;
 			debug("Added memory mapping (%d): %llx %llx\n", entry,
 			      imx8ulp_arm64_mem_map[entry].phys, imx8ulp_arm64_mem_map[entry].size);
@@ -543,24 +562,24 @@ int dram_init_banksize(void)
 	if (ret)
 		return ret;
 
-	gd->bd->bi_dram[bank].start = PHYS_SDRAM;
+	gd->dram[bank].start = PHYS_SDRAM;
 	if (rom_pointer[1]) {
 		phys_addr_t optee_start = (phys_addr_t)rom_pointer[0];
 		phys_size_t optee_size = (size_t)rom_pointer[1];
 
-		gd->bd->bi_dram[bank].size = optee_start - gd->bd->bi_dram[bank].start;
+		gd->dram[bank].size = optee_start - gd->dram[bank].start;
 		if ((optee_start + optee_size) < (PHYS_SDRAM + sdram_size)) {
 			if (++bank >= CONFIG_NR_DRAM_BANKS) {
 				puts("CONFIG_NR_DRAM_BANKS is not enough\n");
 				return -1;
 			}
 
-			gd->bd->bi_dram[bank].start = optee_start + optee_size;
-			gd->bd->bi_dram[bank].size = PHYS_SDRAM +
-				sdram_size - gd->bd->bi_dram[bank].start;
+			gd->dram[bank].start = optee_start + optee_size;
+			gd->dram[bank].size = PHYS_SDRAM +
+				sdram_size - gd->dram[bank].start;
 		}
 	} else {
-		gd->bd->bi_dram[bank].size = sdram_size;
+		gd->dram[bank].size = sdram_size;
 	}
 
 	return 0;
@@ -804,9 +823,10 @@ int imx8ulp_dm_post_init(void)
 	return 0;
 }
 EVENT_SPY_SIMPLE(EVT_DM_POST_INIT_F, imx8ulp_dm_post_init);
+EVENT_SPY_SIMPLE(EVT_DM_POST_INIT_R, imx8ulp_dm_post_init);
 
 #if defined(CONFIG_XPL_BUILD)
-__weak void __noreturn jump_to_image_no_args(struct spl_image_info *spl_image)
+__weak void __noreturn jump_to_image(struct spl_image_info *spl_image)
 {
 	debug("image entry point: 0x%lx\n", spl_image->entry_point);
 

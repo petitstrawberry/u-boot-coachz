@@ -15,8 +15,6 @@
 /* This driver only exposes the status bits to keep with the
  * polling methodology of u-boot.
  */
-DECLARE_GLOBAL_DATA_PTR;
-
 #define IMX_MU_CHANS		24
 
 #define IMX_MU_V2_PAR_OFF	0x4
@@ -389,7 +387,7 @@ int imx_mu_of_xlate(struct mbox_chan *chan, struct ofnode_phandle_args *args)
 	return plat->dcfg->of_xlate(chan, args);
 }
 
-struct mbox_ops imx_mu_ops = {
+static const struct mbox_ops imx_mu_ops = {
 	.of_xlate = imx_mu_of_xlate,
 	.request  = imx_mu_chan_request,
 	.rfree    = imx_mu_chan_free,

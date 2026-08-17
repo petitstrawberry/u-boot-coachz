@@ -1,16 +1,17 @@
 # SPDX-License-Identifier:	GPL-2.0+
 # Copyright (c) 2013, Google Inc.
-#
-# Sanity check of the FIT handling in U-Boot
+
+"""Sanity check of the FIT handling in U-Boot"""
 
 import os
-import pytest
 import struct
-import utils
+
+import pytest
 import fit_util
+import utils
 
 # Define a base ITS which we can adjust using % and a dictionary
-base_its = '''
+BASE_ITS = '''
 /dts-v1/;
 
 / {
@@ -70,7 +71,7 @@ base_its = '''
         configurations {
                 default = "conf-1";
                 conf-1 {
-                        kernel = "kernel-1";
+                        %(kernel_config)s
                         fdt = "fdt-1";
                         %(ramdisk_config)s
                         %(loadables_config)s
@@ -80,7 +81,7 @@ base_its = '''
 '''
 
 # Define a base FDT - currently we don't use anything in this
-base_fdt = '''
+BASE_FDT = '''
 /dts-v1/;
 
 / {
@@ -103,7 +104,8 @@ base_fdt = '''
 # This is the U-Boot script that is run for each test. First load the FIT,
 # then run the 'bootm' command, then save out memory from the places where
 # we expect 'bootm' to write things. Then quit.
-base_script = '''
+BASE_SCRIPT = '''
+mw.b 0 0 160000
 host load hostfs 0 %(fit_addr)x %(fit)s
 fdt addr %(fit_addr)x
 bootm start %(fit_addr)x
@@ -115,60 +117,102 @@ host save hostfs 0 %(loadables1_addr)x %(loadables1_out)s %(loadables1_size)x
 host save hostfs 0 %(loadables2_addr)x %(loadables2_out)s %(loadables2_size)x
 '''
 
+# A minimal ITS for a compressed 'kernel_noload' kernel. bootm allocates a
+# per-image decompression buffer for this image type, sized as a multiple of
+# the compressed length; see the test_fit_kernel_noload_decomp_* tests.
+NOLOAD_ITS = '''
+/dts-v1/;
+
+/ {
+        description = "FIT with a compressed kernel_noload image";
+        #address-cells = <1>;
+
+        images {
+                kernel-1 {
+                        data = /incbin/("%(kernel)s");
+                        type = "kernel_noload";
+                        arch = "sandbox";
+                        os = "linux";
+                        compression = "gzip";
+                        load = <0>;
+                        entry = <0>;
+                };
+        };
+        configurations {
+                default = "conf-1";
+                conf-1 {
+                        kernel = "kernel-1";
+                };
+        };
+};
+'''
+
 @pytest.mark.boardspec('sandbox')
-@pytest.mark.buildconfigspec('fit_signature')
+@pytest.mark.buildconfigspec('fit')
 @pytest.mark.requiredtool('dtc')
-def test_fit(ubman):
-    def make_fname(leaf):
-        """Make a temporary filename
+class TestFitImage:
+    """Test class for FIT image handling in U-Boot
 
-        Args:
-            leaf: Leaf name of file to create (within temporary directory)
-        Return:
-            Temporary filename
-        """
-        return os.path.join(ubman.config.build_dir, leaf)
+    TODO: Almost everything:
+      - hash algorithms - invalid hash/contents should be detected
+      - signature algorithms - invalid sig/contents should be detected
+      - compression
+      - checking that errors are detected like:
+            - image overwriting
+            - missing images
+            - invalid configurations
+            - incorrect os/arch/type fields
+            - empty data
+            - images too large/small
+            - invalid FDT (e.g. putting a random binary in instead)
+      - default configuration selection
+      - bootm command line parameters should have desired effect
+      - run code coverage to make sure we are testing all the code
+    """
 
-    def filesize(fname):
+    def filesize(self, fname):
         """Get the size of a file
 
         Args:
-            fname: Filename to check
+            fname (str): Filename to check
+
         Return:
-            Size of file in bytes
+            int: Size of file in bytes
         """
         return os.stat(fname).st_size
 
-    def read_file(fname):
+    def read_file(self, fname):
         """Read the contents of a file
 
         Args:
-            fname: Filename to read
-        Returns:
-            Contents of file as a string
+            fname (str): Filename to read
+
+        Return:
+            str: Contents of file
         """
         with open(fname, 'rb') as fd:
             return fd.read()
 
-    def make_ramdisk(filename, text):
+    def make_ramdisk(self, ubman, filename, text):
         """Make a sample ramdisk with test data
 
         Returns:
-            Filename of ramdisk created
+            str: Filename of ramdisk created
         """
-        fname = make_fname(filename)
+        fname = fit_util.make_fname(ubman, filename)
         data = ''
         for i in range(100):
-            data += '%s %d was seldom used in the middle ages\n' % (text, i)
-        with open(fname, 'w') as fd:
+            data += f'{text} {i} was seldom used in the middle ages\n'
+        with open(fname, 'w', encoding='ascii') as fd:
             print(data, file=fd)
         return fname
 
-    def make_compressed(filename):
+    def make_compressed(self, ubman, filename):
+        """Compress a file using gzip"""
         utils.run_and_log(ubman, ['gzip', '-f', '-k', filename])
         return filename + '.gz'
 
-    def find_matching(text, match):
+    def find_matching(self, text, match):
         """Find a match in a line of text, and return the unmatched line portion
 
         This is used to extract a part of a line from some text. The match string
@@ -182,25 +226,30 @@ def test_fit(ubman):
         to use regex and return groups.
 
         Args:
-            text: Text to check (list of strings, one for each command issued)
-            match: String to search for
+            text (list of str): Text to check, one for each command issued
+            match (str): String to search for
+
         Return:
-            String containing unmatched portion of line
-        Exceptions:
+            str: unmatched portion of line
+
+        Raises:
             ValueError: If match is not found
 
-        >>> find_matching(['first line:10', 'second_line:20'], 'first line:')
-        '10'
-        >>> find_matching(['first line:10', 'second_line:20'], 'second line')
-        Traceback (most recent call last):
-          ...
-        ValueError: Test aborted
-        >>> find_matching('first line:10\', 'second_line:20'], 'second_line:')
-        '20'
-        >>> find_matching('first line:10\', 'second_line:20\nthird_line:30'],
-                          'third_line:')
-        '30'
+        .. code-block:: python
+
+            >>> find_matching(['first line:10', 'second_line:20'], 'first line:')
+            '10'
+            >>> find_matching(['first line:10', 'second_line:20'], 'second line')
+            Traceback (most recent call last):
+              ...
+            ValueError: Test aborted
+            >>> find_matching(['first line:10', 'second_line:20'], 'second_line:')
+            '20'
+            >>> find_matching(['first line:10', 'second_line:20\\nthird_line:30'],
+            ...               'third_line:')
+            '30'
         """
+        # pylint: disable=W0612
         __tracebackhide__ = True
         for line in '\n'.join(text).splitlines():
             pos = line.find(match)
@@ -208,202 +257,350 @@ def test_fit(ubman):
                 return line[:pos] + line[pos + len(match):]
 
         pytest.fail("Expected '%s' but not found in output")
+        return '<no-match>'
 
-    def check_equal(expected_fname, actual_fname, failure_msg):
+    def check_equal(self, params, expected_key, actual_key, failure_msg):
         """Check that a file matches its expected contents
 
         This is always used on out-buffers whose size is decided by the test
         script anyway, which in some cases may be larger than what we're
         actually looking for. So it's safe to truncate it to the size of the
         expected data.
-
-        Args:
-            expected_fname: Filename containing expected contents
-            actual_fname: Filename containing actual contents
-            failure_msg: Message to print on failure
         """
-        expected_data = read_file(expected_fname)
-        actual_data = read_file(actual_fname)
+        expected_data = self.read_file(params[expected_key])
+        actual_data = self.read_file(params[actual_key])
         if len(expected_data) < len(actual_data):
             actual_data = actual_data[:len(expected_data)]
         assert expected_data == actual_data, failure_msg
 
-    def check_not_equal(expected_fname, actual_fname, failure_msg):
-        """Check that a file does not match its expected contents
-
-        Args:
-            expected_fname: Filename containing expected contents
-            actual_fname: Filename containing actual contents
-            failure_msg: Message to print on failure
-        """
-        expected_data = read_file(expected_fname)
-        actual_data = read_file(actual_fname)
+    def check_not_equal(self, params, expected_key, actual_key, failure_msg):
+        """Check that a file does not match its expected contents"""
+        expected_data = self.read_file(params[expected_key])
+        actual_data = self.read_file(params[actual_key])
         assert expected_data != actual_data, failure_msg
 
-    def run_fit_test(mkimage):
-        """Basic sanity check of FIT loading in U-Boot
-
-        TODO: Almost everything:
-          - hash algorithms - invalid hash/contents should be detected
-          - signature algorithms - invalid sig/contents should be detected
-          - compression
-          - checking that errors are detected like:
-                - image overwriting
-                - missing images
-                - invalid configurations
-                - incorrect os/arch/type fields
-                - empty data
-                - images too large/small
-                - invalid FDT (e.g. putting a random binary in instead)
-          - default configuration selection
-          - bootm command line parameters should have desired effect
-          - run code coverage to make sure we are testing all the code
-        """
-        # Set up invariant files
-        control_dtb = fit_util.make_dtb(ubman, base_fdt, 'u-boot')
+    @pytest.fixture()
+    def fsetup(self, ubman):
+        """Set up files and default parameters for FIT tests"""
+        mkimage = os.path.join(ubman.config.build_dir, 'tools/mkimage')
+        fdt_data = fit_util.make_dtb(ubman, BASE_FDT, 'u-boot')
         kernel = fit_util.make_kernel(ubman, 'test-kernel.bin', 'kernel')
-        ramdisk = make_ramdisk('test-ramdisk.bin', 'ramdisk')
-        loadables1 = fit_util.make_kernel(ubman, 'test-loadables1.bin', 'lenrek')
-        loadables2 = make_ramdisk('test-loadables2.bin', 'ksidmar')
-        kernel_out = make_fname('kernel-out.bin')
-        fdt = make_fname('u-boot.dtb')
-        fdt_out = make_fname('fdt-out.dtb')
-        ramdisk_out = make_fname('ramdisk-out.bin')
-        loadables1_out = make_fname('loadables1-out.bin')
-        loadables2_out = make_fname('loadables2-out.bin')
+        ramdisk = self.make_ramdisk(ubman, 'test-ramdisk.bin', 'ramdisk')
+        loadables1 = fit_util.make_kernel(ubman, 'test-loadables1.bin',
+                                          'lenrek')
+        loadables2 = self.make_ramdisk(ubman, 'test-loadables2.bin',
+                                       'ksidmar')
 
-        # Set up basic parameters with default values
-        params = {
+        yield {
+            'mkimage' : mkimage,
             'fit_addr' : 0x1000,
 
             'kernel' : kernel,
-            'kernel_out' : kernel_out,
+            'kernel_out' : fit_util.make_fname(ubman, 'kernel-out.bin'),
             'kernel_addr' : 0x40000,
-            'kernel_size' : filesize(kernel),
+            'kernel_size' : self.filesize(kernel),
+            'kernel_config' : 'kernel = "kernel-1";',
 
-            'fdt' : fdt,
-            'fdt_out' : fdt_out,
+            'fdt_data' : fdt_data,
+            'fdt' : fit_util.make_fname(ubman, 'u-boot.dtb'),
+            'fdt_out' : fit_util.make_fname(ubman, 'fdt-out.dtb'),
             'fdt_addr' : 0x80000,
-            'fdt_size' : filesize(control_dtb),
+            'fdt_size' : self.filesize(fdt_data),
             'fdt_load' : '',
 
             'ramdisk' : ramdisk,
-            'ramdisk_out' : ramdisk_out,
+            'ramdisk_out' : fit_util.make_fname(ubman, 'ramdisk-out.bin'),
             'ramdisk_addr' : 0xc0000,
-            'ramdisk_size' : filesize(ramdisk),
+            'ramdisk_size' : self.filesize(ramdisk),
             'ramdisk_load' : '',
             'ramdisk_config' : '',
 
             'loadables1' : loadables1,
-            'loadables1_out' : loadables1_out,
+            'loadables1_out' : fit_util.make_fname(ubman, 'loadables1-out.bin'),
             'loadables1_addr' : 0x100000,
-            'loadables1_size' : filesize(loadables1),
+            'loadables1_size' : self.filesize(loadables1),
             'loadables1_load' : '',
 
             'loadables2' : loadables2,
-            'loadables2_out' : loadables2_out,
+            'loadables2_out' : fit_util.make_fname(ubman, 'loadables2-out.bin'),
             'loadables2_addr' : 0x140000,
-            'loadables2_size' : filesize(loadables2),
+            'loadables2_size' : self.filesize(loadables2),
             'loadables2_load' : '',
 
             'loadables_config' : '',
             'compression' : 'none',
         }
 
-        # Make a basic FIT and a script to load it
-        fit = fit_util.make_fit(ubman, mkimage, base_its, params)
+    def prepare(self, ubman, fsetup, **kwargs):
+        """Build a FIT with given overrides
+
+        Args:
+            ubman (ConsoleBase): U-Boot fixture
+            fsetup (dict): Default parameters from the fsetup fixture
+            kwargs: Parameter overrides for this particular test
+
+        Return:
+            tuple:
+                list of str: Commands to run for the test
+                dict: Parameters used by the test
+                str: Filename of the FIT that was created
+        """
+        params = {**fsetup, **kwargs}
+        fit = fit_util.make_fit(ubman, params['mkimage'], BASE_ITS, params)
         params['fit'] = fit
-        cmd = base_script % params
+        cmds = (BASE_SCRIPT % params).splitlines()
+        return cmds, params, fit
 
-        # First check that we can load a kernel
-        # We could perhaps reduce duplication with some loss of readability
-        ubman.config.dtb = control_dtb
-        ubman.restart_uboot()
-        with ubman.log.section('Kernel load'):
-            output = ubman.run_command_list(cmd.splitlines())
-            check_equal(kernel, kernel_out, 'Kernel not loaded')
-            check_not_equal(control_dtb, fdt_out,
-                            'FDT loaded but should be ignored')
-            check_not_equal(ramdisk, ramdisk_out,
-                            'Ramdisk loaded but should not be')
+    def test_fit_kernel_load(self, ubman, fsetup):
+        """Test loading a FIT image with only a kernel"""
+        cmds, params, fit = self.prepare(ubman, fsetup)
 
-            # Find out the offset in the FIT where U-Boot has found the FDT
-            line = find_matching(output, 'Booting using the fdt blob at ')
-            fit_offset = int(line, 16) - params['fit_addr']
-            fdt_magic = struct.pack('>L', 0xd00dfeed)
-            data = read_file(fit)
+        output = ubman.run_command_list(cmds)
+        self.check_equal(params, 'kernel', 'kernel_out', 'Kernel not loaded')
+        self.check_not_equal(params, 'fdt_data', 'fdt_out',
+                             'FDT loaded but should be ignored')
+        self.check_not_equal(params, 'ramdisk', 'ramdisk_out',
+                             'Ramdisk loaded but should not be')
 
-            # Now find where it actually is in the FIT (skip the first word)
-            real_fit_offset = data.find(fdt_magic, 4)
-            assert fit_offset == real_fit_offset, (
-                  'U-Boot loaded FDT from offset %#x, FDT is actually at %#x' %
-                  (fit_offset, real_fit_offset))
+        # Find out the offset in the FIT where U-Boot has found the FDT
+        line = self.find_matching(output, 'Booting using the fdt blob at ')
+        fit_offset = int(line, 16) - params['fit_addr']
+        fdt_magic = struct.pack('>L', 0xd00dfeed)
+        data = self.read_file(fit)
 
-            # Check if bootargs strings substitution works
-            output = ubman.run_command_list([
-                'env set bootargs \\\"\'my_boot_var=${foo}\'\\\"',
-                'env set foo bar',
-                'bootm prep',
-                'env print bootargs'])
-            assert 'bootargs="my_boot_var=bar"' in output, "Bootargs strings not substituted"
+        # Now find where it actually is in the FIT (skip the first word)
+        real_fit_offset = data.find(fdt_magic, 4)
+        assert fit_offset == real_fit_offset, (
+            'U-Boot loaded FDT from offset %#x, FDT is actually at %#x' %
+            (fit_offset, real_fit_offset))
 
-        # Now a kernel and an FDT
-        with ubman.log.section('Kernel + FDT load'):
-            params['fdt_load'] = 'load = <%#x>;' % params['fdt_addr']
-            fit = fit_util.make_fit(ubman, mkimage, base_its, params)
+        # Check bootargs string substitution
+        output = ubman.run_command_list([
+            'env set bootargs \\"\'my_boot_var=${foo}\'\\"',
+            'env set foo bar',
+            'bootm prep',
+            'env print bootargs'])
+        assert 'bootargs="my_boot_var=bar"' in output, \
+                "Bootargs strings not substituted"
+
+    def test_fit_kernel_fdt_load(self, ubman, fsetup):
+        """Test loading a FIT image with a kernel and FDT"""
+        cmds, params, _ = self.prepare(
+            ubman, fsetup,
+            fdt_load='load = <%#x>;' % fsetup['fdt_addr'])
+
+        ubman.run_command_list(cmds)
+        self.check_equal(params, 'kernel', 'kernel_out', 'Kernel not loaded')
+        self.check_equal(params, 'fdt_data', 'fdt_out', 'FDT not loaded')
+        self.check_not_equal(params, 'ramdisk', 'ramdisk_out',
+                             'Ramdisk loaded but should not be')
+
+    def test_fit_kernel_fdt_ramdisk_load(self, ubman, fsetup):
+        """Test loading a FIT image with kernel, FDT, and ramdisk"""
+        cmds, params, _ = self.prepare(
+            ubman, fsetup,
+            fdt_load='load = <%#x>;' % fsetup['fdt_addr'],
+            ramdisk_config='ramdisk = "ramdisk-1";',
+            ramdisk_load='load = <%#x>;' % fsetup['ramdisk_addr'])
+
+        ubman.run_command_list(cmds)
+        self.check_equal(params, 'ramdisk', 'ramdisk_out',
+                         'Ramdisk not loaded')
+
+    def test_fit_loadables_load(self, ubman, fsetup):
+        """Test a configuration with loadables"""
+        cmds, params, _ = self.prepare(
+            ubman, fsetup,
+            fdt_load='load = <%#x>;' % fsetup['fdt_addr'],
+            ramdisk_config='ramdisk = "ramdisk-1";',
+            ramdisk_load='load = <%#x>;' % fsetup['ramdisk_addr'],
+            loadables_config='loadables = "kernel-2", "ramdisk-2";',
+            loadables1_load='load = <%#x>;' % fsetup['loadables1_addr'],
+            loadables2_load='load = <%#x>;' % fsetup['loadables2_addr'])
+
+        ubman.run_command_list(cmds)
+        self.check_equal(params, 'loadables1', 'loadables1_out',
+                         'Loadables1 (kernel) not loaded')
+        self.check_equal(params, 'loadables2', 'loadables2_out',
+                         'Loadables2 (ramdisk) not loaded')
+
+    def test_fit_compressed_images_load(self, ubman, fsetup):
+        """Test loading compressed kernel, FDT, and ramdisk images"""
+        cmds, params, _ = self.prepare(
+            ubman, fsetup,
+            fdt_load='load = <%#x>;' % fsetup['fdt_addr'],
+            ramdisk_config='ramdisk = "ramdisk-1";',
+            ramdisk_load='load = <%#x>;' % fsetup['ramdisk_addr'],
+            compression='gzip',
+            kernel=self.make_compressed(ubman, fsetup['kernel']),
+            fdt=self.make_compressed(ubman, fsetup['fdt']),
+            ramdisk=self.make_compressed(ubman, fsetup['ramdisk']))
+
+        ubman.run_command_list(cmds)
+        self.check_equal(fsetup, 'kernel', 'kernel_out',
+                         'Kernel not loaded')
+        self.check_equal(fsetup, 'fdt_data', 'fdt_out', 'FDT not loaded')
+        self.check_not_equal(fsetup, 'ramdisk', 'ramdisk_out',
+                             'Ramdisk got decompressed?')
+        self.check_equal(params, 'ramdisk', 'ramdisk_out',
+                         'Ramdisk not loaded')
+
+    def test_fit_no_kernel_load(self, ubman, fsetup):
+        """Test that bootm fails when no kernel is specified"""
+        cmds = self.prepare(
+            ubman, fsetup,
+            fdt_load='load = <%#x>;' % fsetup['fdt_addr'],
+            kernel_config='',
+            ramdisk_config='',
+            ramdisk_load='')[0]
+
+        output = ubman.run_command_list(cmds)
+        assert "can't get kernel image!" in '\n'.join(output)
+
+    def test_fit_iminfo_configs_first(self, ubman, fsetup):
+        """Regression: iminfo prints "Default Configuration" even when
+        /configurations is defined before /images in the source.
+
+        fit_print_contents() in boot/image-fit.c used to read the default
+        configuration name from whatever offset libfdt happened to return
+        after iterating /images children. With /images defined first that
+        offset accidentally landed on /configurations; with /configurations
+        defined first the read returned NULL and the line silently went
+        missing. Fixed in commit "boot/fit: read default-config property
+        from the configurations node".
+        """
+        configs_first_its = '''
+/dts-v1/;
+
+/ {
+        description = "FIT with /configurations before /images";
+        #address-cells = <1>;
+
+        configurations {
+                default = "conf-1";
+                conf-1 {
+                        description = "first config";
+                        kernel = "kernel-1";
+                };
+        };
+
+        images {
+                kernel-1 {
+                        description = "first image";
+                        data = /incbin/("%(kernel)s");
+                        type = "kernel";
+                        arch = "sandbox";
+                        os = "linux";
+                        compression = "none";
+                        load = <0x40000>;
+                        entry = <0x40000>;
+                };
+        };
+};
+'''
+        fit = fit_util.make_fit(ubman, fsetup['mkimage'], configs_first_its,
+                                fsetup, basename='configs-first.fit')
+        cmds = [
+            'host load hostfs 0 %#x %s' % (fsetup['fit_addr'], fit),
+            'iminfo %#x' % fsetup['fit_addr'],
+        ]
+        output = '\n'.join(ubman.run_command_list(cmds))
+        assert "Default Configuration: 'conf-1'" in output, (
+            'iminfo output is missing the "Default Configuration" line for a '
+            'FIT whose /configurations node precedes /images. Output was:\n'
+            + output)
+
+    @pytest.mark.buildconfigspec('gzip')
+    def test_fit_kernel_noload_decomp_overflow(self, ubman, fsetup):
+        """Test that an over-large compressed kernel_noload image is rejected
+
+        For a compressed 'kernel_noload' kernel, bootm_load_os() allocates a
+        decompression buffer of ALIGN(image_len * 8, SZ_1M) and must bound the
+        decompressor by that buffer. A kernel that decompresses to far more
+        than eight times its compressed size must therefore fail with a
+        decompression error instead of overflowing the buffer.
+        """
+        sz_1m = 1 << 20
+
+        # CONFIG_SYS_BOOTM_LEN is the global decompression limit. Keep the
+        # uncompressed size below it, so the failure is forced by the smaller
+        # per-image kernel_noload buffer rather than by that global limit.
+        bootm_len = int(ubman.config.buildconfig['config_sys_bootm_len'], 0)
+
+        # 4MB of zeros compresses to a few KB, so the decompression buffer
+        # (ALIGN(image_len * 8, SZ_1M), i.e. 1MB here) ends up far smaller
+        # than the uncompressed image.
+        decomp_size = 4 * sz_1m
+        kernel = fit_util.make_fname(ubman, 'test-noload-kernel.bin')
+        with open(kernel, 'wb') as fd:
+            fd.write(b'\0' * decomp_size)
+        kernel_gz = self.make_compressed(ubman, kernel)
+
+        image_len = self.filesize(kernel_gz)
+        req_size = (image_len * 8 + sz_1m - 1) // sz_1m * sz_1m
+        assert req_size < decomp_size <= bootm_len, (
+            'Test setup error: need decomp buffer (%#x) < image (%#x) <= '
+            'CONFIG_SYS_BOOTM_LEN (%#x)' % (req_size, decomp_size, bootm_len))
+
+        fit = fit_util.make_fit(ubman, fsetup['mkimage'], NOLOAD_ITS,
+                                {'kernel': kernel_gz})
+        fit_addr = fsetup['fit_addr']
+
+        ubman.run_command_list([
+            'host load hostfs 0 %x %s' % (fit_addr, fit),
+            'bootm start %x' % fit_addr,
+        ])
+
+        # 'bootm loados' decompresses the kernel. Decompression must stop at
+        # the buffer boundary and report 'Image too large'; it must not run
+        # past the buffer and return to the prompt.
+        ubman.run_command('bootm loados', wait_for_prompt=False)
+        try:
+            ubman.wait_for('Image too large')
+        finally:
+            # The decompression failure resets the board; bring up a fresh
+            # instance so later tests start from a clean console.
             ubman.restart_uboot()
-            output = ubman.run_command_list(cmd.splitlines())
-            check_equal(kernel, kernel_out, 'Kernel not loaded')
-            check_equal(control_dtb, fdt_out, 'FDT not loaded')
-            check_not_equal(ramdisk, ramdisk_out,
-                            'Ramdisk loaded but should not be')
 
-        # Try a ramdisk
-        with ubman.log.section('Kernel + FDT + Ramdisk load'):
-            params['ramdisk_config'] = 'ramdisk = "ramdisk-1";'
-            params['ramdisk_load'] = 'load = <%#x>;' % params['ramdisk_addr']
-            fit = fit_util.make_fit(ubman, mkimage, base_its, params)
-            ubman.restart_uboot()
-            output = ubman.run_command_list(cmd.splitlines())
-            check_equal(ramdisk, ramdisk_out, 'Ramdisk not loaded')
+    @pytest.mark.buildconfigspec('gzip')
+    def test_fit_kernel_noload_decomp_boundary(self, ubman, fsetup):
+        """Test that decompression succeeds exactly at the buffer limit
 
-        # Configuration with some Loadables
-        with ubman.log.section('Kernel + FDT + Ramdisk load + Loadables'):
-            params['loadables_config'] = 'loadables = "kernel-2", "ramdisk-2";'
-            params['loadables1_load'] = ('load = <%#x>;' %
-                                         params['loadables1_addr'])
-            params['loadables2_load'] = ('load = <%#x>;' %
-                                         params['loadables2_addr'])
-            fit = fit_util.make_fit(ubman, mkimage, base_its, params)
-            ubman.restart_uboot()
-            output = ubman.run_command_list(cmd.splitlines())
-            check_equal(loadables1, loadables1_out,
-                        'Loadables1 (kernel) not loaded')
-            check_equal(loadables2, loadables2_out,
-                        'Loadables2 (ramdisk) not loaded')
+        For a compressed 'kernel_noload' kernel, bootm_load_os() allocates a
+        decompression buffer of ALIGN(image_len * 8, SZ_1M). A kernel whose
+        decompressed size equals that buffer exactly must succeed, guarding
+        against an off-by-one rejection at the buffer limit.
+        """
+        sz_1m = 1 << 20
 
-        # Kernel, FDT and Ramdisk all compressed
-        with ubman.log.section('(Kernel + FDT + Ramdisk) compressed'):
-            params['compression'] = 'gzip'
-            params['kernel'] = make_compressed(kernel)
-            params['fdt'] = make_compressed(fdt)
-            params['ramdisk'] = make_compressed(ramdisk)
-            fit = fit_util.make_fit(ubman, mkimage, base_its, params)
-            ubman.restart_uboot()
-            output = ubman.run_command_list(cmd.splitlines())
-            check_equal(kernel, kernel_out, 'Kernel not loaded')
-            check_equal(control_dtb, fdt_out, 'FDT not loaded')
-            check_not_equal(ramdisk, ramdisk_out, 'Ramdisk got decompressed?')
-            check_equal(ramdisk + '.gz', ramdisk_out, 'Ramdist not loaded')
+        # 1MiB of zeros compresses to a few KB, so image_len * 8 rounds up to
+        # exactly 1MiB. Picking decomp_size = 1MiB makes the decompressed size
+        # match the buffer exactly.
+        decomp_size = sz_1m
+        kernel = fit_util.make_fname(ubman, 'test-noload-kernel-boundary.bin')
+        with open(kernel, 'wb') as fd:
+            fd.write(b'\0' * decomp_size)
+        kernel_gz = self.make_compressed(ubman, kernel)
 
+        image_len = self.filesize(kernel_gz)
+        req_size = (image_len * 8 + sz_1m - 1) // sz_1m * sz_1m
+        assert decomp_size == req_size, (
+            'Test setup error: need decomp_size (%#x) == req_size (%#x)'
+            % (decomp_size, req_size))
 
-    # We need to use our own device tree file. Remember to restore it
-    # afterwards.
-    old_dtb = ubman.config.dtb
-    try:
-        mkimage = ubman.config.build_dir + '/tools/mkimage'
-        run_fit_test(mkimage)
-    finally:
-        # Go back to the original U-Boot with the correct dtb.
-        ubman.config.dtb = old_dtb
-        ubman.restart_uboot()
+        fit = fit_util.make_fit(ubman, fsetup['mkimage'], NOLOAD_ITS,
+                                {'kernel': kernel_gz},
+                                basename='test-noload-boundary.fit')
+        fit_addr = fsetup['fit_addr']
+
+        # Decompression at the buffer limit must succeed, returning to the
+        # prompt cleanly and never printing 'Image too large'.
+        output = ubman.run_command_list([
+            'host load hostfs 0 %x %s' % (fit_addr, fit),
+            'bootm start %x' % fit_addr,
+            'bootm loados',
+        ])
+        text = '\n'.join(output)
+        assert 'Image too large' not in text, (
+            "'bootm loados' rejected a kernel_noload image whose decompressed "
+            'size matches its buffer exactly: %s' % text)

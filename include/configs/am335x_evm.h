@@ -83,6 +83,8 @@
 	"fdtfile=undefined\0" \
 	"finduuid=part uuid mmc 0:2 uuid\0" \
 	"console=ttyO0,115200n8\0" \
+	"stdout=serial,vidconsole\0" \
+	"stderr=serial,vidconsole\0" \
 	"partitions=" \
 		"uuid_disk=${uuid_gpt_disk};" \
 		"name=bootloader,start=384K,size=1792K," \
@@ -126,6 +128,8 @@
 			"setenv fdtfile am335x-bonegreen.dtb; fi; " \
 		"if test $board_name = BBGW; then " \
 			"setenv fdtfile am335x-bonegreen-wireless.dtb; fi; " \
+		"if test $board_name = BBGE; then " \
+			"setenv fdtfile am335x-bonegreen-eco.dtb; fi; " \
 		"if test $board_name = BBBL; then " \
 			"setenv fdtfile am335x-boneblue.dtb; fi; " \
 		"if test $board_name = BBEN; then " \

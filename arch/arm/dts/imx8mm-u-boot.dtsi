@@ -15,6 +15,10 @@
 		};
 	};
 #endif
+	imx8mm-cm4 {
+		compatible = "fsl,imx8mm-cm4";
+		syscon = <&src>;
+	};
 };
 
 #ifdef CONFIG_FSL_CAAM
@@ -46,14 +50,6 @@
 	section {
 		pad-byte = <0x00>;
 
-#ifdef CONFIG_FSPI_CONF_HEADER
-		fspi_conf_block {
-			filename = CONFIG_FSPI_CONF_FILE;
-			type = "blob-ext";
-			size = <0x1000>;
-		};
-#endif
-
 #ifdef CONFIG_IMX_HAB
 		nxp-imx8mcst@0 {
 			filename = "u-boot-spl-mkimage.signed.bin";
@@ -64,7 +60,11 @@
 
 			binman_imx_spl: nxp-imx8mimage {
 				filename = "u-boot-spl-mkimage.bin";
+#ifdef CONFIG_FSPI_CONF_HEADER
+				nxp,boot-from = "fspi";
+#else
 				nxp,boot-from = "sd";
+#endif
 				nxp,rom-version = <1>;
 				nxp,loader-address = <CONFIG_SPL_TEXT_BASE>;
 				args;	/* Needed by mkimage etype superclass */
@@ -81,25 +81,25 @@
 					};
 
 					ddr-1d-imem-fw {
-						filename = "lpddr4_pmu_train_1d_imem.bin";
+						filename = "lpddr4_pmu_train_1d_imem_202006.bin";
 						align-end = <4>;
 						type = "blob-ext";
 					};
 
 					ddr-1d-dmem-fw {
-						filename = "lpddr4_pmu_train_1d_dmem.bin";
+						filename = "lpddr4_pmu_train_1d_dmem_202006.bin";
 						align-end = <4>;
 						type = "blob-ext";
 					};
 
 					ddr-2d-imem-fw {
-						filename = "lpddr4_pmu_train_2d_imem.bin";
+						filename = "lpddr4_pmu_train_2d_imem_202006.bin";
 						align-end = <4>;
 						type = "blob-ext";
 					};
 
 					ddr-2d-dmem-fw {
-						filename = "lpddr4_pmu_train_2d_dmem.bin";
+						filename = "lpddr4_pmu_train_2d_dmem_202006.bin";
 						align-end = <4>;
 						type = "blob-ext";
 					};
@@ -176,6 +176,7 @@
 
 						tee-os {
 							filename = "tee.bin";
+							optional;
 						};
 					};
 #endif
@@ -236,6 +237,11 @@
 };
 
 &osc_24m {
+	bootph-all;
+	bootph-pre-ram;
+};
+
+&osc_32k {
 	bootph-all;
 	bootph-pre-ram;
 };

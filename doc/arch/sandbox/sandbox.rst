@@ -72,7 +72,7 @@ console::
    Err:   lcd
    =>
 
-You can issue commands as your would normally. If the command you want is
+You can issue commands as you would normally. If the command you want is
 not supported you can add it to include/configs/sandbox.h.
 
 To exit, type 'poweroff' or press Ctrl-C.
@@ -277,28 +277,28 @@ operations being tested on the eth0 interface.
    DHCP
    ....
 
-   setenv autoload no
-   setenv ethrotate no
-   setenv ethact eth1
+   env set autoload no
+   env set ethrotate no
+   env set ethact eth1
    dhcp
 
    PING
    ....
 
-   setenv autoload no
-   setenv ethrotate no
-   setenv ethact eth1
+   env set autoload no
+   env set ethrotate no
+   env set ethact eth1
    dhcp
    ping $gatewayip
 
    TFTP
    ....
 
-   setenv autoload no
-   setenv ethrotate no
-   setenv ethact eth1
+   env set autoload no
+   env set ethrotate no
+   env set ethact eth1
    dhcp
-   setenv serverip WWW.XXX.YYY.ZZZ
+   env set serverip WWW.XXX.YYY.ZZZ
    tftpboot u-boot.bin
 
 The bridge also supports (to a lesser extent) the localhost interface, 'lo'.
@@ -322,8 +322,8 @@ operation being tested on the lo interface.
    TFTP
    ....
 
-   setenv ethrotate no
-   setenv ethact eth5
+   env set ethrotate no
+   env set ethact eth5
    tftpboot u-boot.bin
 
 
@@ -634,7 +634,7 @@ There are at least four possible ways to address this:
 * Use the host malloc and free instead of U-Boot's custom allocator. This will
   eliminate the need to annotate dlmalloc. However, using a different allocator
   for sandbox will mean that bugs in dlmalloc will only be tested when running
-  on read (or emulated) hardware.
+  on real (or emulated) hardware.
 
 Until one of the above options are implemented, it will remain difficult
 to sift through the massive amount of spurious warnings.

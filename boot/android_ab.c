@@ -101,8 +101,7 @@ static int ab_control_create_from_disk(struct blk_desc *dev_desc,
 	abc_blocks = DIV_ROUND_UP(sizeof(struct bootloader_control),
 				  part_info->blksz);
 	if (abc_offset + abc_blocks > part_info->size) {
-		log_err("ANDROID: boot control partition too small. Need at");
-		log_err(" least %lu blocks but have %lu blocks.\n",
+		log_err("ANDROID: boot control partition too small. Need at least %lu blocks but have " LBAF " blocks.\n",
 			abc_offset + abc_blocks, part_info->size);
 		return -EINVAL;
 	}
@@ -290,11 +289,14 @@ int ab_select_slot(struct blk_desc *dev_desc, struct disk_partition *part_info,
 	slot = -1;
 	for (i = 0; i < abc->nb_slot; ++i) {
 		if (abc->slot_info[i].verity_corrupted ||
-		    !abc->slot_info[i].tries_remaining) {
+		    (!abc->slot_info[i].tries_remaining &&
+		     !abc->slot_info[i].successful_boot)) {
 			log_debug("ANDROID: unbootable slot %d tries: %d, ",
 				  i, abc->slot_info[i].tries_remaining);
-			log_debug("corrupt: %d\n",
+			log_debug("corrupt: %d, ",
 				  abc->slot_info[i].verity_corrupted);
+			log_debug("successful: %d\n",
+				  abc->slot_info[i].successful_boot);
 			continue;
 		}
 		log_debug("ANDROID: bootable slot %d pri: %d, tries: %d, ",

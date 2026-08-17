@@ -18,8 +18,8 @@ int dram_init(void)
 
 int dram_init_banksize(void)
 {
-	gd->bd->bi_dram[0].start = PHYS_SDRAM_1;
-	gd->bd->bi_dram[0].size = PHYS_SDRAM_1_SIZE;
+	gd->dram[0].start = PHYS_SDRAM_1;
+	gd->dram[0].size = PHYS_SDRAM_1_SIZE;
 
 	return 0;
 }
@@ -31,11 +31,6 @@ void enable_caches(void)
 	dcache_enable();
 }
 #endif
-
-int board_init(void)
-{
-	return 0;
-}
 
 #ifdef CONFIG_USB_DWC3
 int g_dnl_board_usb_cable_connected(void)

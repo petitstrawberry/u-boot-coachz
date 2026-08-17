@@ -63,10 +63,15 @@ static const struct zynqmp_device zynqmp_devices[] = {
 	{
 		.id = 0x04688093,
 		.device = 1,
-		.variants = ZYNQMP_VARIANT_EG,
+		.variants = ZYNQMP_VARIANT_EG | ZYNQMP_VARIANT_CG,
 	},
 	{
 		.id = 0x04689093,
+		.device = 1,
+		.variants = ZYNQMP_VARIANT_EG_LR,
+	},
+	{
+		.id = 0x0468A093,
 		.device = 1,
 		.variants = ZYNQMP_VARIANT_EG_LR,
 	},
@@ -209,6 +214,16 @@ static const struct zynqmp_device zynqmp_devices[] = {
 		.variants = ZYNQMP_VARIANT_DR,
 	},
 	{
+		.id = 0x047F9093,
+		.device = 58,
+		.variants = ZYNQMP_VARIANT_DR,
+	},
+	{
+		.id = 0x047FC093,
+		.device = 59,
+		.variants = ZYNQMP_VARIANT_DR,
+	},
+	{
 		.id = 0x046d0093,
 		.device = 67,
 		.variants = ZYNQMP_VARIANT_DR,
@@ -217,6 +232,36 @@ static const struct zynqmp_device zynqmp_devices[] = {
 		.id = 0x046d7093,
 		.device = 67,
 		.variants = ZYNQMP_VARIANT_DR_SE,
+	},
+	{
+		.id = 0x046D1093,
+		.device = 65,
+		.variants = ZYNQMP_VARIANT_DR,
+	},
+	{
+		.id = 0x046D2093,
+		.device = 55,
+		.variants = ZYNQMP_VARIANT_DR,
+	},
+	{
+		.id = 0x046D3093,
+		.device = 57,
+		.variants = ZYNQMP_VARIANT_DR,
+	},
+	{
+		.id = 0x046D4093,
+		.device = 42,
+		.variants = ZYNQMP_VARIANT_DR,
+	},
+	{
+		.id = 0x046D5093,
+		.device = 63,
+		.variants = ZYNQMP_VARIANT_DR,
+	},
+	{
+		.id = 0x046D6093,
+		.device = 64,
+		.variants = ZYNQMP_VARIANT_DR,
 	},
 	{
 		.id = 0x04712093,
@@ -313,7 +358,9 @@ static int soc_xilinx_zynqmp_detect_machine(struct udevice *dev, u32 idcode,
 	} else if (device->variants & ZYNQMP_VARIANT_DR_SE) {
 		strlcat(priv->machine, "dr_SE", sizeof(priv->machine));
 	} else if (device->variants & ZYNQMP_VARIANT_TEG) {
-		strlcat(priv->machine, "teg", sizeof(priv->machine));
+		/* Devices with TEG variant might be TEG or TCG family */
+		strlcat(priv->machine, (idcode2 & EFUSE_GPU_DIS_MASK) ?
+			"tcg" : "teg", sizeof(priv->machine));
 	}
 
 	return 0;
@@ -362,7 +409,7 @@ static int soc_xilinx_zynqmp_probe(struct udevice *dev)
 		ret = zynqmp_mmio_read(ZYNQMP_PS_VERSION, &ret_payload[2]);
 	else
 		ret = xilinx_pm_request(PM_GET_CHIPID, 0, 0, 0, 0,
-					ret_payload);
+					0, 0, ret_payload);
 	if (ret < 0)
 		return ret;
 

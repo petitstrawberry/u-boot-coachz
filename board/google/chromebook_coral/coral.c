@@ -12,12 +12,12 @@
 #include <dm.h>
 #include <event.h>
 #include <init.h>
+#include <intel_gnvs.h>
 #include <log.h>
 #include <sysinfo.h>
 #include <acpi/acpigen.h>
 #include <asm-generic/gpio.h>
 #include <asm/acpi_nhlt.h>
-#include <asm/intel_gnvs.h>
 #include <asm/intel_pinctrl.h>
 #include <dm/acpi.h>
 #include <linux/delay.h>
@@ -293,7 +293,7 @@ static int coral_write_acpi_tables(const struct udevice *dev,
 	return 0;
 }
 
-struct acpi_ops coral_acpi_ops = {
+static const struct acpi_ops __maybe_unused coral_acpi_ops = {
 	.write_tables	= coral_write_acpi_tables,
 	.inject_dsdt	= chromeos_acpi_gpio_generate,
 };

@@ -27,6 +27,23 @@ config TARGET_CM3588_NAS_RK3588
 	  - 3.5mm Headphone out, 2.0mm PH-2A Mic in
 	  - 5V Fan connector, PWM beeper, IR receiver, RTC battery connector
 
+config TARGET_GAMEFORCE_ACE_RK3588S
+	bool "GameForce Ace"
+	help
+	  The GameForce Ace is a handheld game console from GameForce with
+	  the Rockchip RK3588S SoC.
+
+	  Hardware features:
+	  - Rockchip RK3588S SoC
+	  - 12GB LPDDR4x RAM
+	  - 128GB eMMC
+	  - MicroSD card slot
+	  - 1x USB 3.0 Type-C with DP AltMode support
+	  - 1x HDMI 2.1 micro-HDMI out
+	  - 1920x1080 touchscreen MIPI-DSI panel
+	  - Analog joysticks and L/R triggers
+	  - 16 digital buttons
+
 config TARGET_GENBOOK_CM5_RK3588
 	bool "Cool Pi CM5 GenBook"
 	help
@@ -191,6 +208,12 @@ config TARGET_RK3588_NEU6
 	  IO board and Neu6a needs to mount on top of this IO board in order to
 	  create complete Edgeble Neural Compute Module 6B(Neu6B) IO platform.
 
+config TARGET_ROC_PC_RK3588S
+	bool "Firefly ROC PC RK3588S"
+	help
+	  ROC-PC-RK3588S is a single board computer from Firefly
+	  using the Rockchip RK3588S.
+
 config TARGET_ROCK5A_RK3588
 	bool "Radxa ROCK5A RK3588 board"
 	help
@@ -269,14 +292,15 @@ config TARGET_ROCK_5_ITX_RK3588
 	  Powered by either 12V, ATX power-supply or PoE
 
 config TARGET_ROCK_5C_RK3588S
-	bool "Radxa ROCK 5C RK3588S2 board"
+	bool "Radxa ROCK 5C/5C Lite"
 	help
-	  Radxa ROCK 5C is a Rockchip RK3588S2 based single board computer.
+	  Radxa ROCK 5C/5C Lite is a Rockchip RK3588S2/RK3582 based SBC (Single
+	  Board Computer) by Radxa.
 
 	  Specification:
 
-	  Quad A76 and Quad A55 CPU
-	  6 TOPS NPU
+	  Quad/Dual A76 and Quad A55 CPU
+	  6/5 TOPS NPU
 	  up to 32GB LPDDR4x RAM
 	  eMMC / SPI flash connector
 	  Micro SD Card slot
@@ -400,16 +424,15 @@ config ROCKCHIP_STIMER_BASE
 config SYS_SOC
 	default "rk3588"
 
-config TEXT_BASE
-	default 0x00a00000
-
 source "board/armsom/sige7-rk3588/Kconfig"
 source "board/coolpi/genbook_cm5_rk3588/Kconfig"
 source "board/edgeble/neural-compute-module-6/Kconfig"
+source "board/firefly/roc-pc-rk3588s/Kconfig"
 source "board/friendlyelec/cm3588-nas-rk3588/Kconfig"
 source "board/friendlyelec/nanopc-t6-rk3588/Kconfig"
 source "board/friendlyelec/nanopi-r6c-rk3588s/Kconfig"
 source "board/friendlyelec/nanopi-r6s-rk3588s/Kconfig"
+source "board/gameforce/ace-rk3588s/Kconfig"
 source "board/hardkernel/odroid_m2/Kconfig"
 source "board/indiedroid/nova/Kconfig"
 source "board/khadas/khadas-edge2-rk3588s/Kconfig"

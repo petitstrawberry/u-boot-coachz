@@ -44,9 +44,9 @@ config X86_RUN_64BIT_NO_SPL
 	bool "64-bit"
 	select X86_64
 	help
-          Build U-Boot as a 64-bit binary without SPL. As U-Boot enters
-          in 64-bit mode, the assumption is that the silicon is fully
-          initialized (MP, page tables, etc.).
+	  Build U-Boot as a 64-bit binary without SPL. As U-Boot enters
+	  in 64-bit mode, the assumption is that the silicon is fully
+	  initialized (MP, page tables, etc.).
 
 endchoice
 
@@ -128,12 +128,6 @@ source "arch/x86/cpu/slimbootloader/Kconfig"
 source "arch/x86/cpu/tangier/Kconfig"
 
 # architecture-specific options below
-
-config AHCI
-	default y
-
-config SYS_MALLOC_F_LEN
-	default 0x800
 
 config RAMBASE
 	hex
@@ -321,7 +315,6 @@ config ROM_SIZE
 	default 0x200000 if UBOOT_ROMSIZE_KB_2048
 	default 0x400000 if UBOOT_ROMSIZE_KB_4096
 	default 0x800000 if UBOOT_ROMSIZE_KB_8192
-	default 0xc00000 if UBOOT_ROMSIZE_KB_12288
 	default 0x1000000 if UBOOT_ROMSIZE_KB_16384
 
 config HAVE_INTEL_ME
@@ -367,7 +360,7 @@ config USE_HOB
 
 config HAVE_FSP
 	bool "Add an Firmware Support Package binary"
-	depends on !EFI
+	depends on !EFI_CLIENT
 	select USE_HOB
 	select HAS_ROM
 	help
@@ -389,6 +382,7 @@ config USE_CAR
 choice
 	prompt "FSP version"
 	depends on HAVE_FSP
+	default FSP_VERSION2 if INTEL_APOLLOLAKE
 	default FSP_VERSION1
 	help
 	  Selects the FSP version to use. Intel has published several versions
@@ -515,7 +509,7 @@ config FSP_BROKEN_HOB
 
 config ENABLE_MRC_CACHE
 	bool "Enable MRC cache"
-	depends on !EFI && !SYS_COREBOOT
+	depends on !EFI_CLIENT && !SYS_COREBOOT
 	help
 	  Enable this feature to cause MRC data to be cached in NV storage
 	  to be used for speeding up boot time on future reboots and/or
@@ -590,11 +584,11 @@ config DCACHE_RAM_MRC_VAR_SIZE
 	  not boot.
 
 config HAVE_REFCODE
-        bool "Add a Reference Code binary"
-        help
-          Select this option to add a Reference Code binary to the resulting
-          U-Boot image. This is an Intel binary blob that handles system
-          initialisation, in this case the PCH and System Agent.
+	bool "Add a Reference Code binary"
+	help
+	  Select this option to add a Reference Code binary to the resulting
+	  U-Boot image. This is an Intel binary blob that handles system
+	  initialisation, in this case the PCH and System Agent.
 
           Note: Without this binary (on platforms that need it such as
           broadwell) U-Boot will be missing some critical setup steps.
@@ -622,8 +616,8 @@ config SMP_AP_WORK
 	bool
 	depends on SMP
 	help
-	 Allow APs to do other work after initialisation instead of going
-	 to sleep.
+	  Allow APs to do other work after initialisation instead of going
+	  to sleep.
 
 config MAX_CPUS
 	int "Maximum number of CPUs permitted"
@@ -754,7 +748,7 @@ config HAVE_P2SB
 	  devices.
 
 menu "System tables"
-	depends on !EFI && !SYS_COREBOOT
+	depends on !EFI_CLIENT && !SYS_COREBOOT
 
 config GENERATE_PIRQ_TABLE
 	bool "Generate a PIRQ table"

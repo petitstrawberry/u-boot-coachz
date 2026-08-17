@@ -12,6 +12,17 @@ config ANDROID_BOOT_IMAGE
 	  This enables support for booting images which use the Android
 	  image format header.
 
+config ANDROID_BOOT_IMAGE_IGNORE_BLOB_ADDR
+	bool "Android Boot Image ignore addr"
+	default n
+	help
+	  This ignore kernel/ramdisk load addr specified in androidboot header.
+
+	  There is a concern on exposing the whole memory to image loading is
+	  dangerous. Also, since it's not always possible to change the load
+	  addr by repacking the boot.img (mainly due to AVB signature mismatch),
+	  we need a way to use kernel_addr_r and ramdisk_addr_r.
+
 config TIMESTAMP
 	bool "Show image date and time when displaying image information"
 	default y if CMD_DATE
@@ -22,6 +33,24 @@ config TIMESTAMP
 	  enabled, then U-Boot requires FITs to have a timestamp. If a FIT is
 	  loaded that does not, the message 'Wrong FIT format: no timestamp'
 	  is shown.
+
+config LIB_BOOTI
+	bool
+
+config LIB_BOOTM
+	bool
+
+config LIB_BOOTZ
+	bool
+
+config SPL_LIB_BOOTI
+	bool
+
+config SPL_LIB_BOOTM
+	bool
+
+config SPL_LIB_BOOTZ
+	bool
 
 config BUTTON_CMD
 	bool "Support for running a command if a button is held during boot"
@@ -75,6 +104,19 @@ config FIT_FULL_CHECK
 	  of bugs or omissions in the code. This includes a bad structure,
 	  multiple root nodes and the like.
 
+config CONTROL_DTB_AS_FIT
+	bool "Allow U-Boot's control DTB to act as FIT image"
+	help
+	  Enable this to exempt U-Boot's control DTB from the sanity
+	  checks done to ensure FIT images are valid. This can for
+	  example be used to embed whole scripts in the control DTB,
+	  that can then be invoked using 'source ${fdtcontroladdr}'.
+	  In a secure boot setup, this is safe, as the control DTB is
+	  necessarily covered by any mechanism verifying U-Boot and
+	  can therefore be trusted. This only affects the case where
+	  the image being checked is gd->fdt_blob. See
+	  doc/develop/devicetree/control.rst for details.
+
 config FIT_SIGNATURE
 	bool "Enable signature verification of FIT uImages"
 	depends on DM
@@ -106,13 +148,6 @@ config FIT_SIGNATURE_MAX_SIZE
 	  device memory. Assure this size does not extend past expected storage
 	  space.
 
-config FIT_RSASSA_PSS
-	bool "Support rsassa-pss signature scheme of FIT image contents"
-	depends on FIT_SIGNATURE
-	help
-	  Enable this to support the pss padding algorithm as described
-	  in the rfc8017 (https://tools.ietf.org/html/rfc8017).
-
 config FIT_CIPHER
 	bool "Enable ciphering data in a FIT uImages"
 	depends on DM
@@ -120,6 +155,26 @@ config FIT_CIPHER
 	help
 	  Enable the feature of data ciphering/unciphering in the tool mkimage
 	  and in the u-boot support of the FIT image.
+
+config FIT_VERITY
+	bool "dm-verity boot parameter generation from FIT metadata"
+	depends on FIT && OF_LIBFDT
+	help
+	  When a FIT configuration contains loadable sub-images of type
+	  IH_TYPE_FILESYSTEM with a dm-verity subnode, this option enables
+	  building the dm-mod.create= and dm-mod.waitfor= kernel
+	  command-line parameters from the verity metadata
+	  (data-block-size, hash-block-size, num-data-blocks,
+	  hash-start-block, algorithm, digest, salt) stored in the FIT.
+
+	  The generated parameters reference /dev/fitN block devices that
+	  Linux's uImage.FIT block driver assigns to loadable sub-images.
+
+	  During FIT parsing (BOOTM_STATE_FINDOTHER), verity cmdline
+	  fragments are stored in struct bootm_headers and automatically
+	  appended to the bootargs environment variable during
+	  BOOTM_STATE_OS_PREP.  This works from both the bootm command
+	  and BOOTSTD bootmeths.
 
 config FIT_VERBOSE
 	bool "Show verbose messages when FIT images fail"
@@ -137,6 +192,8 @@ config FIT_BEST_MATCH
 	  U-Boot itself. A match is considered "best" if it matches the
 	  most specific compatibility entry of U-Boot's fdt's root node.
 	  The order of entries in the configuration's fdt is ignored.
+	  If several configurations match equally well, the one named by
+	  the configurations node 'default' property is preferred.
 
 config FIT_IMAGE_POST_PROCESS
 	bool "Enable post-processing of FIT artifacts after loading by U-Boot"
@@ -162,19 +219,8 @@ config SPL_FIT
 	bool "Support Flattened Image Tree within SPL"
 	depends on SPL
 	select SPL_HASH
+	select SPL_LIBGENERIC_SUPPORT
 	select SPL_OF_LIBFDT
-
-config VPL_FIT
-	bool "Support Flattened Image Tree within VPL"
-	depends on VPL
-	select VPL_HASH
-	select VPL_OF_LIBFDT
-
-config TPL_FIT
-	bool "Support Flattened Image Tree within TPL"
-	depends on TPL
-	select TPL_HASH
-	select TPL_OF_LIBFDT
 
 config SPL_FIT_PRINT
 	bool "Support FIT printing within SPL"
@@ -183,18 +229,18 @@ config SPL_FIT_PRINT
 	  Support printing the content of the fitImage in a verbose manner in SPL.
 
 config SPL_FIT_FULL_CHECK
-	bool "Do a full check of the FIT before using it"
+	bool "Do a full check of the FIT within SPL before using it"
 	depends on SPL_FIT
 	help
-	  Enable this do a full check of the FIT to make sure it is valid. This
-	  helps to protect against carefully crafted FITs which take advantage
-	  of bugs or omissions in the code. This includes a bad structure,
-	  multiple root nodes and the like.
+	  Enable this do a full check of the FIT within SPL to make sure it is
+	  valid. This helps to protect against carefully crafted FITs which take
+	  advantage of bugs or omissions in the code. This includes a bad
+	  structure, multiple root nodes and the like.
 
 config SPL_FIT_SIGNATURE
 	bool "Enable signature verification of FIT firmware within SPL"
 	depends on SPL_DM
-	depends on SPL_LOAD_FIT || SPL_LOAD_FIT_FULL
+	depends on SPL_LOAD_FIT
 	select FIT_SIGNATURE
 	select SPL_FIT
 	select SPL_CRYPTO
@@ -213,13 +259,6 @@ config SPL_FIT_SIGNATURE_MAX_SIZE
 	  A sane value of 256MB protects corrupted DTB structures from overlapping
 	  device memory. Assure this size does not extend past expected storage
 	  space.
-
-config SPL_FIT_RSASSA_PSS
-	bool "Support rsassa-pss signature scheme of FIT image contents in SPL"
-	depends on SPL_FIT_SIGNATURE
-	help
-	  Enable this to support the pss padding algorithm as described
-	  in the rfc8017 (https://tools.ietf.org/html/rfc8017) in SPL.
 
 config SPL_LOAD_FIT
 	bool "Enable SPL loading U-Boot as a FIT (basic fitImage features)"
@@ -243,11 +282,24 @@ config SPL_LOAD_FIT
 	  3. FDTs are only loaded for images with an "os" property of "u-boot".
 	     "linux" images are also supported with Falcon boot mode.
 
-config SPL_LOAD_FIT_ADDRESS
-	hex "load address of fit image"
+config SPL_HAS_LOAD_FIT_ADDRESS
+	bool "Provide a static address to load the fit image to in SPL"
 	depends on SPL_LOAD_FIT
+	default y if ARCH_IMX8M || ARCH_K3 || ARCH_ROCKCHIP
+	help
+	  By default, a buffer will be dynamically allocated via malloc to hold
+	  the FIT image. This option instead allows for a static location to be
+	  used and thus not need a large malloc pool to be defined.
+
+config SPL_LOAD_FIT_ADDRESS
+	hex "load address of fit image in SPL"
+	depends on SPL_HAS_LOAD_FIT_ADDRESS
+	default 0x81000000 if ARCH_K3 && ARM64
+	default 0x80080000 if ARCH_K3 && CPU_V7R
 	default 0x44000000 if ARCH_IMX8M
-	default 0x0
+	default 0x60080000 if ARCH_ROCKCHIP && SPL_TEXT_BASE = 0x60000000
+	default 0x40200000 if ARCH_ROCKCHIP && SPL_TEXT_BASE = 0x40000000
+	default 0x00200000 if ARCH_ROCKCHIP && SPL_TEXT_BASE = 0x00000000
 	help
 	  Specify the load address of the fit image that will be loaded
 	  by SPL.
@@ -264,7 +316,7 @@ config SPL_LOAD_FIT_APPLY_OVERLAY
 config SPL_LOAD_FIT_APPLY_OVERLAY_BUF_SZ
 	depends on SPL_LOAD_FIT_APPLY_OVERLAY
 	default 0x10000
-	hex "size of temporary buffer used to load the overlays"
+	hex "size of temporary buffer used to load the overlays within SPL"
 	help
 	  The size of the area where the overlays will be loaded and
 	  uncompress. Must be at least as large as biggest overlay
@@ -272,7 +324,7 @@ config SPL_LOAD_FIT_APPLY_OVERLAY_BUF_SZ
 
 config SPL_LOAD_FIT_FULL
 	bool "Enable SPL loading U-Boot as a FIT (full fitImage features)"
-	select SPL_FIT
+	depends on SPL_LOAD_FIT
 	help
 	  Normally with the SPL framework a legacy image is generated as part
 	  of the build. This contains U-Boot along with information as to
@@ -280,6 +332,28 @@ config SPL_LOAD_FIT_FULL
 	  of a FIT (Flat Image Tree) which provides more flexibility. In
 	  particular it can handle selecting from multiple device tree
 	  and passing the correct one to U-Boot.
+
+config SPL_FIT_IMAGE_POST_PROCESS
+	bool "Enable post-processing of FIT artifacts after loading by the SPL"
+	depends on SPL_LOAD_FIT
+	default y if TI_SECURE_DEVICE
+	help
+	  Allows doing any sort of manipulation to blobs after they got extracted
+	  from the U-Boot FIT image like stripping off headers or modifying the
+	  size of the blob, verification, authentication, decryption etc. in a
+	  platform or board specific way. In order to use this feature a platform
+	  or board-specific implementation of board_fit_image_post_process() must
+	  be provided. Also, anything done during this post-processing step would
+	  need to be comprehended in how the images were prepared before being
+	  injected into the FIT creation (i.e. the blobs would have been pre-
+	  processed before being added to the FIT image).
+
+config TPL_FIT
+	bool "Support Flattened Image Tree within TPL"
+	depends on TPL
+	select TPL_HASH
+	select TPL_LIBGENERIC_SUPPORT
+	select TPL_OF_LIBFDT
 
 config TPL_LOAD_FIT
 	bool "Enable TPL loading U-Boot as a FIT (basic fitImage features)"
@@ -299,24 +373,9 @@ config TPL_LOAD_FIT
 	     property will not be loaded. This limitation also applies to FPGA
 	     images with the correct "compatible" string.
 	  2. For FPGA images, the supported "compatible" list is in the
-	     doc/uImage.FIT/source_file_format.txt.
+	     doc/usage/fit/source_file_format.rst.
 	  3. FDTs are only loaded for images with an "os" property of "u-boot".
 	     "linux" images are also supported with Falcon boot mode.
-
-config SPL_FIT_IMAGE_POST_PROCESS
-	bool "Enable post-processing of FIT artifacts after loading by the SPL"
-	depends on SPL_LOAD_FIT
-	default y if TI_SECURE_DEVICE
-	help
-	  Allows doing any sort of manipulation to blobs after they got extracted
-	  from the U-Boot FIT image like stripping off headers or modifying the
-	  size of the blob, verification, authentication, decryption etc. in a
-	  platform or board specific way. In order to use this feature a platform
-	  or board-specific implementation of board_fit_image_post_process() must
-	  be provided. Also, anything done during this post-processing step would
-	  need to be comprehended in how the images were prepared before being
-	  injected into the FIT creation (i.e. the blobs would have been pre-
-	  processed before being added to the FIT image).
 
 if VPL
 
@@ -333,7 +392,7 @@ config VPL_LOAD_FIT
 	default y
 
 config VPL_LOAD_FIT_FULL
-	bool "Enable SPL loading U-Boot as a FIT (full fitImage features)"
+	bool "Enable VPL loading U-Boot as a FIT (full fitImage features)"
 	select VPL_FIT
 	help
 	  Normally with the SPL framework a legacy image is generated as part
@@ -351,13 +410,13 @@ config VPL_FIT_PRINT
 	  Support printing the content of the fitImage in a verbose manner in VPL.
 
 config VPL_FIT_FULL_CHECK
-	bool "Do a full check of the FIT before using it"
+	bool "Do a full check of the FIT within VPL before using it"
 	default y
 	help
-	  Enable this do a full check of the FIT to make sure it is valid. This
-	  helps to protect against carefully crafted FITs which take advantage
-	  of bugs or omissions in the code. This includes a bad structure,
-	  multiple root nodes and the like.
+	  Enable this do a full check of the FIT within VPL to make sure it is
+	  valid. This helps to protect against carefully crafted FITs which take
+	  advantage of bugs or omissions in the code. This includes a bad
+	  structure, multiple root nodes and the like.
 
 config VPL_FIT_SIGNATURE
 	bool "Enable signature verification of FIT firmware within VPL"
@@ -365,7 +424,6 @@ config VPL_FIT_SIGNATURE
 	default y
 	select FIT_SIGNATURE
 	select VPL_FIT
-	select VPL_CRYPTO
 	select VPL_HASH
 	imply VPL_RSA
 	imply VPL_RSA_VERIFY
@@ -409,12 +467,12 @@ config BOOT_DEFAULTS_CMDS
 	select CMD_FAT
 	select CMD_FS_GENERIC
 	select CMD_PART if PARTITIONS
-	select CMD_DHCP if CMD_NET
-	select CMD_PING if CMD_NET
-	select CMD_PXE if CMD_NET
-	select CMD_BOOTI if ARM64
-	select CMD_BOOTZ if ARM && !ARM64
-	imply CMD_MII if NET
+	select CMD_DHCP if CMD_NET && NET
+	select CMD_PING if CMD_NET && NET
+	select CMD_PXE if CMD_NET && NET
+	select CMD_BOOTI if ARM64 && LMB
+	select CMD_BOOTZ if ARM && !ARM64 && LMB
+	imply CMD_MII if CMD_NET && NET
 
 config BOOT_DEFAULTS
 	bool  # Common defaults for standard boot and distroboot
@@ -428,8 +486,8 @@ config BOOT_DEFAULTS
 
 menuconfig BOOTSTD
 	bool "Standard boot"
-	default y
-	depends on DM && OF_CONTROL && BLK
+	default y if BLK
+	depends on DM && OF_CONTROL
 	help
 	  U-Boot supports a standard way of locating something to boot,
 	  typically an Operating System such as Linux, provided by a distro such
@@ -537,9 +595,11 @@ config BOOTMETH_ANDROID
 	depends on X86 || ARM || SANDBOX
 	depends on CMDLINE
 	select ANDROID_BOOT_IMAGE
+	select CMD_ABOOTIMG
 	select CMD_BCB
 	imply CMD_FASTBOOT
 	imply FASTBOOT if !NET_LWIP
+	select EFI_PARTITION
 	select PARTITION_TYPE_GUID
 	select PARTITION_UUIDS
 	help
@@ -629,9 +689,9 @@ config BOOTMETH_QFW
 	depends on QFW
 	default y
 	help
-	 Use QEMU parameters -kernel, -initrd, -append to determine the kernel,
-	 initial RAM disk, and kernel command line parameters to boot an
-	 operating system. U-Boot's control device-tree is passed to the kernel.
+	  Use QEMU parameters -kernel, -initrd, -append to determine the kernel,
+	  initial RAM disk, and kernel command line parameters to boot an
+	  operating system. U-Boot's control device-tree is passed to the kernel.
 
 config BOOTMETH_VBE
 	bool "Bootdev support for Verified Boot for Embedded"
@@ -856,6 +916,55 @@ config EXPO
 	  The expo can be presented in graphics form using a vidconsole, or in
 	  text form on a serial console.
 
+config BOOTMETH_RAUC
+	bool "Bootdev support for RAUC A/B systems"
+	depends on CMDLINE
+	select HUSH_PARSER
+	help
+	  Enables support for booting RAUC A/B systems from MMC devices. This
+	  makes the bootdevs look for a 'boot.scr.uimg' or 'boot.scr' in the
+	  respective boot partitions, describing how to boot the distro.
+
+if BOOTMETH_RAUC
+
+config BOOTMETH_RAUC_BOOT_ORDER
+	string "RAUC boot order"
+	default "A B"
+	help
+	  Sets the default boot order. This must be list of space-separated
+	  strings naming the individual boot slots. Each entry in this string
+	  should correspond to an existing slot on the target's flash device.
+
+config BOOTMETH_RAUC_PARTITIONS
+	string "RAUC boot and root partitions indexes"
+	default "1,2 3,4"
+	help
+	  Sets the partition indexes of boot and root slots. This must be a list
+	  of comma-separated pair values, which in turn are separated by spaces.
+	  The first value in pair is for the boot partition and second for the
+	  root partition.
+
+config BOOTMETH_RAUC_DEFAULT_TRIES
+	int "RAUC slot default tries"
+	default 3
+	help
+	  Sets how many times a slot should be tried booting, before considering
+	  it to be bad.
+
+config BOOTMETH_RAUC_RESET_ALL_ZERO_TRIES
+	bool "Reset slot tries when all RAUC slots have zero tries left"
+	default y
+	help
+	  When all slots have zero tries left or no valid slot was found, reset
+	  to the default boot order set by BOOTMETH_RAUC_BOOT_ORDER and set the
+	  slot tries to their default value specified by
+	  BOOTMETH_RAUC_DEFAULT_TRIES.
+
+	  This prevents a system from remaining in an unbootable state, after
+	  all slot tries were decremented to zero.
+
+endif # BOOTMETH_RAUC
+
 config BOOTMETH_SANDBOX
 	def_bool y
 	depends on SANDBOX
@@ -919,6 +1028,7 @@ if SPL
 
 config SPL_UPL
 	bool "Write a UPL handoff in SPL"
+	depends on SPL_LIBGENERIC_SUPPORT
 	imply SPL_UPL_OUT
 	help
 	  This tells SPL to write a UPL handoff and pass it to the next phase
@@ -936,6 +1046,7 @@ config SPL_UPL_WRITE
 
 config SPL_UPL_OUT
 	bool "upl - Support writing a Universal Payload handoff in SPL"
+	depends on SPL_UPL
 	select SPL_UPL_WRITE
 	help
 	  Provides support for encoding a UPL-format payload and passing it to
@@ -965,6 +1076,7 @@ config MEASURED_BOOT
 	select SHA256
 	select SHA384
 	select SHA512
+	select SM3
 	help
 	  This option enables measurement of the boot process when booting
 	  without UEFI . Measurement involves creating cryptographic hashes
@@ -975,7 +1087,7 @@ config MEASURED_BOOT
 	  to use some attestation tools on your system.
 
 if MEASURED_BOOT
-	config MEASURE_DEVICETREE
+config MEASURE_DEVICETREE
 	bool "Measure the devicetree image"
 	default y if MEASURED_BOOT
 	help
@@ -984,7 +1096,7 @@ if MEASURED_BOOT
 	  Therefore, it should not be measured into the TPM. In that case,
 	  disable the measurement here.
 
-	config MEASURE_IGNORE_LOG
+config MEASURE_IGNORE_LOG
 	bool "Ignore the existing event log"
 	help
 	  On platforms that use an event log memory region that persists
@@ -994,10 +1106,10 @@ if MEASURED_BOOT
 endif # MEASURED_BOOT
 
 config SYS_BOOTM_LEN
-	hex "Maximum size of a decompresed OS image"
+	hex "Maximum size of a decompressed OS image"
 	depends on CMD_BOOTM || CMD_BOOTI || CMD_BOOTZ || \
 		LEGACY_IMAGE_FORMAT || SPL_LEGACY_IMAGE_FORMAT
-	default 0x4000000 if PPC || ARM64
+	default 0x8000000 if PPC || ARM64 || RISCV
 	default 0x1000000 if X86 || ARCH_MX6 || ARCH_MX7
 	default 0x800000
 	help
@@ -1034,6 +1146,7 @@ config SYS_RAMBOOT
 
 config RAMBOOT_PBL
 	bool "Freescale PBL(pre-boot loader) image format support"
+	depends on ARCH_LS1021A || PPC
 	select SYS_RAMBOOT if PPC
 	help
 	  Some SoCs use PBL to load RCW and/or pre-initialization instructions.
@@ -1087,7 +1200,6 @@ config SYS_BOOT_RAMDISK_HIGH
 	depends on CMD_BOOTM || CMD_BOOTI || CMD_BOOTZ
 	depends on !(NIOS2 || SANDBOX || SH || XTENSA)
 	def_bool y
-	select LMB
 	help
 	  Enable initrd_high functionality.  If defined then the initrd_high
 	  feature is enabled and the boot* ramdisk subcommand is enabled.
@@ -1103,6 +1215,7 @@ config DISTRO_DEFAULTS
 	select CMD_SYSBOOT
 	select HUSH_PARSER
 	select SYS_LONGHELP
+	select LEGACY_IMAGE_FORMAT
 	help
 	  Note: These scripts have been replaced by Standard Boot. Do not use
 	  them on new boards. See 'Migrating from distro_boot' at
@@ -1171,7 +1284,7 @@ config BOOTSTAGE_REPORT
 config BOOTSTAGE_RECORD_COUNT
 	int "Number of boot stage records to store"
 	depends on BOOTSTAGE
-	default 30
+	default 50
 	help
 	  This is the size of the bootstage record list and is the maximum
 	  number of bootstage records that can be recorded.
@@ -1719,7 +1832,7 @@ menu "Image support"
 config IMAGE_PRE_LOAD
 	bool "Image pre-load support"
 	help
-	  Enable an image pre-load stage in the SPL.
+	  Enable an image pre-load stage.
 	  This pre-load stage allows to do some manipulation
 	  or check (for example signature check) on an image
 	  before launching it.
@@ -1736,7 +1849,7 @@ config SPL_IMAGE_PRE_LOAD
 config IMAGE_PRE_LOAD_SIG
 	bool "Image pre-load signature support"
 	depends on IMAGE_PRE_LOAD
-	select FIT_SIGNATURE
+	depends on FIT_SIGNATURE
 	select RSA
 	select RSA_VERIFY_WITH_PKEY
 	help
@@ -1751,9 +1864,9 @@ config IMAGE_PRE_LOAD_SIG
 	  u-boot.
 
 config SPL_IMAGE_PRE_LOAD_SIG
-	bool "Image pre-load signature support witin SPL"
+	bool "Image pre-load signature support within SPL"
 	depends on SPL_IMAGE_PRE_LOAD && IMAGE_PRE_LOAD_SIG
-	select SPL_FIT_SIGNATURE
+	depends on SPL_FIT_SIGNATURE
 	select SPL_RSA
 	select SPL_RSA_VERIFY_WITH_PKEY
 	help
@@ -1790,8 +1903,20 @@ config OF_BOARD_SETUP
 	  board-specific information in the device tree for use by the OS.
 	  The device tree is then passed to the OS.
 
+config OF_BOARD_SETUP_EXTENDED
+	bool "Set up latest board-specific details in device tree before boot"
+	depends on !COMPILE_TEST
+	imply OF_BOARD_SETUP
+	help
+	  This causes U-Boot to call ft_board_setup_ex() before booting into
+	  the Operating System. Similar function as ft_board_setup(). However,
+	  its modifications are not overwritten by other system changes and are
+	  applied to the device tree as the very last step before boot.
+	  The device tree is then passed to the OS.
+
 config OF_SYSTEM_SETUP
 	bool "Set up system-specific details in device tree before boot"
+	depends on !COMPILE_TEST
 	help
 	  This causes U-Boot to call ft_system_setup() before booting into
 	  the Operating System. This function can set up various
@@ -1836,6 +1961,10 @@ endmenu
 
 endif # OF_LIBFDT
 
+config SUPPORT_EXTENSION_SCAN
+	select OF_LIBFDT_OVERLAY
+        bool
+
 config USE_BOOTARGS
 	bool "Enable boot arguments"
 	help
@@ -1846,7 +1975,7 @@ config USE_BOOTARGS
 
 config BOOTARGS
 	string "Boot arguments"
-	depends on USE_BOOTARGS && !USE_DEFAULT_ENV_FILE
+	depends on USE_BOOTARGS && !ENV_USE_DEFAULT_ENV_TEXT_FILE
 	help
 	  This can be used to pass arguments to the bootm command. The value of
 	  CONFIG_BOOTARGS goes into the environment value "bootargs". Note that
@@ -1881,7 +2010,7 @@ config USE_BOOTCOMMAND
 
 config BOOTCOMMAND
 	string "bootcmd value"
-	depends on USE_BOOTCOMMAND && !USE_DEFAULT_ENV_FILE
+	depends on USE_BOOTCOMMAND && !ENV_USE_DEFAULT_ENV_TEXT_FILE
 	default "bootflow scan -lb" if BOOTSTD_DEFAULTS && CMD_BOOTFLOW_FULL
 	default "bootflow scan" if BOOTSTD_DEFAULTS && !CMD_BOOTFLOW_FULL
 	default "run distro_bootcmd" if !BOOTSTD_BOOTCOMMAND && DISTRO_DEFAULTS
@@ -1904,7 +2033,7 @@ config USE_PREBOOT
 
 config PREBOOT
 	string "preboot default value"
-	depends on USE_PREBOOT && !USE_DEFAULT_ENV_FILE
+	depends on USE_PREBOOT && !ENV_USE_DEFAULT_ENV_TEXT_FILE
 	default "usb start" if USB_KEYBOARD
 	default ""
 	help
@@ -1947,7 +2076,7 @@ menu "Configuration editor"
 
 config CEDIT
 	bool "Configuration editor"
-	depends on EXPO
+	depends on EXPO && DM_RTC
 	help
 	  Provides a way to deal with board configuration and present it to
 	  the user for adjustment.

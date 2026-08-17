@@ -969,7 +969,7 @@ def run_tests(names, processes):
     """
     test_name = names[0] if names else None
     result = test_util.run_test_suites(
-        'test_fdt', False, False, False, processes, test_name, None,
+        'test_fdt', False, False, False, False, processes, test_name, None,
         [TestFdt, TestNode, TestProp, TestFdtUtil])
 
     return (0 if result.wasSuccessful() else 1)
@@ -986,7 +986,7 @@ def main():
                         default=False, help='run tests')
     parser.add_argument('-T', '--test-coverage', action='store_true',
                         default=False,
-                        help='run tests and check for 100% coverage')
+                        help='run tests and check for 100%% coverage')
     parser.add_argument('name', nargs='*')
     args = parser.parse_args()
 

@@ -8,8 +8,10 @@
 #include <env.h>
 #include <fastboot.h>
 #include <fastboot-internal.h>
+#include <fb_block.h>
 #include <fb_mmc.h>
 #include <fb_nand.h>
+#include <fb_spi_flash.h>
 #include <part.h>
 #include <stdlib.h>
 #include <vsprintf.h>
@@ -337,6 +339,10 @@ void fastboot_data_complete(char *response)
  */
 static void __maybe_unused flash(char *cmd_parameter, char *response)
 {
+	if (IS_ENABLED(CONFIG_FASTBOOT_FLASH_BLOCK))
+		fastboot_block_flash_write(cmd_parameter, fastboot_buf_addr,
+					   image_size, response);
+
 	if (IS_ENABLED(CONFIG_FASTBOOT_FLASH_MMC))
 		fastboot_mmc_flash_write(cmd_parameter, fastboot_buf_addr,
 					 image_size, response);
@@ -344,6 +350,10 @@ static void __maybe_unused flash(char *cmd_parameter, char *response)
 	if (IS_ENABLED(CONFIG_FASTBOOT_FLASH_NAND))
 		fastboot_nand_flash_write(cmd_parameter, fastboot_buf_addr,
 					  image_size, response);
+
+	if (IS_ENABLED(CONFIG_FASTBOOT_FLASH_SPI))
+		fastboot_spi_flash_write(cmd_parameter, fastboot_buf_addr,
+					 image_size, response);
 }
 
 /**
@@ -357,11 +367,17 @@ static void __maybe_unused flash(char *cmd_parameter, char *response)
  */
 static void __maybe_unused erase(char *cmd_parameter, char *response)
 {
+	if (IS_ENABLED(CONFIG_FASTBOOT_FLASH_BLOCK))
+		fastboot_block_erase(cmd_parameter, response);
+
 	if (IS_ENABLED(CONFIG_FASTBOOT_FLASH_MMC))
 		fastboot_mmc_erase(cmd_parameter, response);
 
 	if (IS_ENABLED(CONFIG_FASTBOOT_FLASH_NAND))
 		fastboot_nand_erase(cmd_parameter, response);
+
+	if (IS_ENABLED(CONFIG_FASTBOOT_FLASH_SPI))
+		fastboot_spi_flash_erase(cmd_parameter, response);
 }
 
 /**
@@ -405,7 +421,7 @@ static void __maybe_unused run_acmd(char *cmd_parameter, char *response)
 		return;
 	}
 
-	if (strlen(cmd_parameter) > sizeof(g_a_cmd_buff)) {
+	if (strlen(cmd_parameter) >= sizeof(g_a_cmd_buff)) {
 		pr_err("too long command\n");
 		fastboot_fail("too long command", response);
 		return;

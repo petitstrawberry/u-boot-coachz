@@ -306,7 +306,7 @@ static int sb_gpio_get_name(const struct udevice *dev, char *out_name)
 	return acpi_copy_name(out_name, "GPIO");
 }
 
-struct acpi_ops gpio_sandbox_acpi_ops = {
+static const struct acpi_ops gpio_sandbox_acpi_ops = {
 	.get_name	= sb_gpio_get_name,
 };
 #endif /* ACPIGEN */
@@ -327,13 +327,14 @@ static const struct dm_gpio_ops gpio_sandbox_ops = {
 
 static int sandbox_gpio_of_to_plat(struct udevice *dev)
 {
-	if (CONFIG_IS_ENABLED(OF_REAL)) {
-		struct gpio_dev_priv *uc_priv = dev_get_uclass_priv(dev);
+	struct gpio_dev_priv *uc_priv = dev_get_uclass_priv(dev);
 
-		uc_priv->gpio_count =
-			dev_read_u32_default(dev, "sandbox,gpio-count", 0);
-		uc_priv->bank_name = dev_read_string(dev, "gpio-bank-name");
-	}
+	if (!dev_has_ofnode(dev))
+		return 0;
+
+	uc_priv->gpio_count =
+		dev_read_u32_default(dev, "sandbox,gpio-count", 0);
+	uc_priv->bank_name = dev_read_string(dev, "gpio-bank-name");
 
 	return 0;
 }
@@ -567,7 +568,7 @@ static struct pinctrl_ops sandbox_pinctrl_gpio_ops = {
 };
 
 #if CONFIG_IS_ENABLED(ACPIGEN)
-struct acpi_ops pinctrl_sandbox_acpi_ops = {
+static const struct acpi_ops pinctrl_sandbox_acpi_ops = {
 	.get_name	= sb_pinctrl_get_name,
 };
 #endif

@@ -13,9 +13,6 @@
 #include <malloc.h>
 #include <mapmem.h>
 #include <video.h>
-#include <asm/global_data.h>
-
-DECLARE_GLOBAL_DATA_PTR;
 
 static const efi_guid_t efi_gop_guid = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
 
@@ -26,6 +23,7 @@ static const efi_guid_t efi_gop_guid = EFI_GRAPHICS_OUTPUT_PROTOCOL_GUID;
  * @ops:	graphical output protocol interface
  * @info:	graphical output mode information
  * @mode:	graphical output mode
+ * @vdev:	backing video device
  * @bpix:	bits per pixel
  * @fb:		frame buffer
  */
@@ -34,6 +32,7 @@ struct efi_gop_obj {
 	struct efi_gop ops;
 	struct efi_gop_mode_info info;
 	struct efi_gop_mode mode;
+	struct udevice *vdev;
 	/* Fields we only have access to during init */
 	u32 bpix;
 	void *fb;
@@ -122,6 +121,7 @@ static __always_inline efi_status_t gop_blt_int(struct efi_gop *this,
 	u32 *fb32 = gopobj->fb;
 	u16 *fb16 = gopobj->fb;
 	struct efi_gop_pixel *buffer = __builtin_assume_aligned(bufferp, 4);
+	bool blt_to_video = (operation != EFI_BLT_VIDEO_TO_BLT_BUFFER);
 
 	if (delta) {
 		/* Check for 4 byte alignment */
@@ -244,6 +244,9 @@ static __always_inline efi_status_t gop_blt_int(struct efi_gop *this,
 		slineoff += swidth;
 		dlineoff += dwidth;
 	}
+
+	if (blt_to_video)
+		video_damage(gopobj->vdev, dx, dy, width, height);
 
 	return EFI_SUCCESS;
 }
@@ -468,7 +471,7 @@ efi_status_t efi_gop_register(void)
 {
 	struct efi_gop_obj *gopobj;
 	u32 bpix, format, col, row;
-	u64 fb_base, fb_size;
+	u64 fb_size;
 	efi_status_t ret;
 	struct udevice *vdev;
 	struct video_priv *priv;
@@ -487,7 +490,6 @@ efi_status_t efi_gop_register(void)
 	row = video_get_ysize(vdev);
 
 	plat = dev_get_uclass_plat(vdev);
-	fb_base = IS_ENABLED(CONFIG_VIDEO_COPY) ? plat->copy_base : plat->base;
 	fb_size = plat->size;
 
 	switch (bpix) {
@@ -525,7 +527,7 @@ efi_status_t efi_gop_register(void)
 	gopobj->mode.info = &gopobj->info;
 	gopobj->mode.info_size = sizeof(gopobj->info);
 
-	gopobj->mode.fb_base = fb_base;
+	gopobj->mode.fb_base = (uintptr_t)priv->fb;
 	gopobj->mode.fb_size = fb_size;
 
 	gopobj->info.version = 0;
@@ -550,7 +552,8 @@ efi_status_t efi_gop_register(void)
 	}
 	gopobj->info.pixels_per_scanline = col;
 	gopobj->bpix = bpix;
-	gopobj->fb = map_sysmem(fb_base, fb_size);
+	gopobj->fb = priv->fb;
+	gopobj->vdev = vdev;
 
 	return EFI_SUCCESS;
 }
