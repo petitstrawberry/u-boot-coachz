@@ -14,6 +14,17 @@
 
 #define USB30_PRIM_MOCK_UTMI_CLK_CMD_RCGR 0xf034
 #define USB30_PRIM_MASTER_CLK_CMD_RCGR 0xf01c
+#define SDCC2_APPS_CLK_CMD_RCGR 0x1400c
+
+static const struct freq_tbl ftbl_gcc_sdcc2_apps_clk_src[] = {
+	F(400000, CFG_CLK_SRC_CXO, 12, 1, 4),
+	F(9600000, CFG_CLK_SRC_CXO, 2, 0, 0),
+	F(19200000, CFG_CLK_SRC_CXO, 1, 0, 0),
+	F(25000000, CFG_CLK_SRC_GPLL0_EVEN, 12, 0, 0),
+	F(50000000, CFG_CLK_SRC_GPLL0_EVEN, 6, 0, 0),
+	F(100000000, CFG_CLK_SRC_GPLL0_EVEN, 3, 0, 0),
+	{ }
+};
 
 static const struct freq_tbl ftbl_gcc_qupv3_wrap1_s3_clk_src[] = {
 	F(7372800, CFG_CLK_SRC_GPLL0_EVEN, 1, 384, 15625),
@@ -58,6 +69,12 @@ static ulong sc7180_set_rate(struct clk *clk, ulong rate)
 	case GCC_SDCC1_APPS_CLK:
 		/* TODO: Actually set a rate here */
 		return rate;
+	case GCC_SDCC2_APPS_CLK:
+		freq = qcom_find_freq(ftbl_gcc_sdcc2_apps_clk_src, rate);
+		clk_rcg_set_rate_mnd(priv->base, SDCC2_APPS_CLK_CMD_RCGR,
+				     freq->pre_div, freq->m, freq->n,
+				     freq->src, 8);
+		return freq->freq;
 	default:
 		return 0;
 	}
@@ -75,6 +92,9 @@ static const struct gate_clk sc7180_clks[] = {
 	GATE_CLK(GCC_QUPV3_WRAP1_S2_CLK, 0x52008, BIT(24)),
 	GATE_CLK(GCC_SDCC1_AHB_CLK, 0x12008, 1),
 	GATE_CLK(GCC_SDCC1_APPS_CLK, 0x1200c, 1),
+	GATE_CLK(GCC_SDCC2_AHB_CLK, 0x14008, 1),
+	GATE_CLK(GCC_SDCC2_APPS_CLK, 0x14004, 1),
+	GATE_CLK(GCC_USB_PHY_CFG_AHB2PHY_CLK, 0x6a004, 1),
 };
 
 static int sc7180_enable(struct clk *clk)
