@@ -163,6 +163,13 @@ static int fixup_qcom_dwc3(struct device_node *root, struct device_node *glue_np
 		return 0;
 	}
 
+	/*
+	 * Coreboot already initialized USB to the point that USB SuperSpeed
+	 * works, don't alter the controller configuration.
+	 */
+	if (gd->arch.coreboot_table)
+		return 0;
+
 	/* No driver available - apply the fixup */
 	debug("Applying USB high-speed fixup to %s\n", dwc3->name);
 
@@ -194,6 +201,14 @@ static int fixup_qcom_dwc3(struct device_node *root, struct device_node *glue_np
 		return ret;
 	}
 
+	/* Tell the glue driver to configure the wrapper for high-speed only operation */
+	ret = of_write_prop(glue_np, "qcom,select-utmi-as-pipe-clk", 0, NULL);
+	if (ret) {
+		log_err("Failed to add property 'qcom,select-utmi-as-pipe-clk': %d\n", ret);
+		return ret;
+	}
+
+	/* Tell the core driver to configure for high-speed only operation */
 	ret = of_write_prop(dwc3, "maximum-speed", strlen("high-speed") + 1, "high-speed");
 	if (ret) {
 		log_err("Failed to set 'maximum-speed' property: %d\n", ret);

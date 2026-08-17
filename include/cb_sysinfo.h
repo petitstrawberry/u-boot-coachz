@@ -8,7 +8,7 @@
 #ifndef _COREBOOT_SYSINFO_H
 #define _COREBOOT_SYSINFO_H
 
-#include <asm/coreboot_tables.h>
+#include <coreboot_tables.h>
 #include <linux/types.h>
 
 /* Maximum number of memory range definitions */
@@ -114,6 +114,8 @@
  * acpi_gnvs: @Pointer to Intel Global NVS struct, see struct acpi_global_nvs
  * @board_id: Board ID indicating the board variant, typically 0xffffffff
  * @ram_code: RAM code indicating the SDRAM type, typically 0xffffffff
+ * @sku_id: SKU ID indicating the board SKU, typically 0xffffffff
+ * @fw_config: FW config indicating the firmware configuration, typically 0xffffffff
  * @wifi_calibration: WiFi calibration info, NULL if none
  * @ramoops_buffer: Address of kernel Ramoops buffer
  * @ramoops_buffer_size: Sizeof of Ramoops buffer, typically 1MB
@@ -204,6 +206,8 @@ struct sysinfo_t {
 	void		*acpi_gnvs;
 	u32		board_id;
 	u32		ram_code;
+	u32		sku_id;
+	u64		fw_config;
 	void		*wifi_calibration;
 	u64	ramoops_buffer;
 	u32	ramoops_buffer_size;
@@ -229,6 +233,13 @@ struct sysinfo_t {
 extern struct sysinfo_t lib_sysinfo;
 
 /**
+ * detect_coreboot_table_at() - Helper to find coreboot table
+ *
+ * Return: Address of coreboot table or -ENOENT on failure
+ */
+long detect_coreboot_table_at(ulong start, ulong size);
+
+/**
  * get_coreboot_info() - parse the coreboot sysinfo table
  *
  * Parses the coreboot table if found, setting the GD_FLG_SKIP_LL_INIT flag if
@@ -240,10 +251,48 @@ extern struct sysinfo_t lib_sysinfo;
 int get_coreboot_info(struct sysinfo_t *info);
 
 /**
+ * coreboot_early_init() - locate the coreboot tables during early init
+ *
+ * Return: 0
+ */
+int coreboot_early_init(void);
+
+/**
  * cb_get_sysinfo() - get a pointer to the parsed coreboot sysinfo
  *
  * Return: pointer to sysinfo, or NULL if not available
  */
 const struct sysinfo_t *cb_get_sysinfo(void);
+
+unsigned int vpd_cbmem_parse_key_value(const u8 *blob, unsigned int offset,
+		unsigned int *key_offset, unsigned int *key_len,
+		unsigned int *val_offset, unsigned int *val_len);
+
+/**
+ * fdt_fixup_coreboot() - Add the /firmware/coreboot node to the FDT
+ *
+ * Add the /firmware/coreboot node to the FDT if U-Boot is a coreboot payload.
+ */
+void fdt_fixup_coreboot(void *blob);
+
+/**
+ * coreboot_dram_init_banksize() - Initilize RAM banksize from coreboot sysinfo
+ * table
+ */
+int coreboot_dram_init_banksize(void);
+
+/**
+ * coreboot_dram_init() - Configure available RAM banks from coreboot sysinfo
+ * table
+ */
+int coreboot_dram_init(void);
+
+/**
+ * coreboot_board_get_usable_ram_top() - Get the top of RAM usable by U-Boot
+ * while running as a coreboot payload
+ *
+ * Return: Physical address as the top of RAM
+ */
+phys_addr_t coreboot_board_get_usable_ram_top(phys_size_t total_size);
 
 #endif

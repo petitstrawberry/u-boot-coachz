@@ -7,7 +7,7 @@
 #include <net.h>
 #include <vesa.h>
 #include <acpi/acpi_s3.h>
-#include <asm/coreboot_tables.h>
+#include <coreboot_tables.h>
 #include <asm/e820.h>
 #include <asm/global_data.h>
 

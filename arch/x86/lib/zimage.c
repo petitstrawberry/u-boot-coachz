@@ -30,9 +30,6 @@
 #include <asm/bootm.h>
 #include <asm/bootparam.h>
 #include <asm/efi.h>
-#ifdef CONFIG_SYS_COREBOOT
-#include <asm/arch/timestamp.h>
-#endif
 #include <linux/compiler.h>
 #include <linux/ctype.h>
 #include <linux/libfdt.h>

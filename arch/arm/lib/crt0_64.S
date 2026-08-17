@@ -135,7 +135,7 @@ relocation_return:
 
 /*
  * Set up final (full) environment
- */
+	 */
 	bl	c_runtime_cpu_setup		/* still call old routine */
 #endif /* !CONFIG_XPL_BUILD */
 #if !defined(CONFIG_XPL_BUILD) || CONFIG_IS_ENABLED(FRAMEWORK)

@@ -1,0 +1,15 @@
+// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
+
+/*
+ * U-Boot does not yet support the SC7180 USB3/DisplayPort combo PHY.
+ * Keep the DWC3 host usable for removable-media boot through QUSB2.
+ */
+&usb_1_dwc3 {
+	maximum-speed = "high-speed";
+	phys = <&usb_1_hsphy>;
+	phy-names = "usb2-phy";
+};
+
+&usb_1_qmpphy {
+	status = "disabled";
+};

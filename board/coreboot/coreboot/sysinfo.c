@@ -9,7 +9,7 @@
 #include <dm.h>
 #include <smbios.h>
 #include <sysinfo.h>
-#include <asm/cb_sysinfo.h>
+#include <cb_sysinfo.h>
 
 struct cb_sysinfo_priv {
 	const struct smbios_header *bios;

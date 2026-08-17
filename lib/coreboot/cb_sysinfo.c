@@ -6,10 +6,14 @@
  * Copyright (C) 2009 coresystems GmbH
  */
 
-#include <asm/cb_sysinfo.h>
+#include <cb_sysinfo.h>
+#include <coreboot_timestamp.h>
+#include <env.h>
+#include <fdt_support.h>
 #include <init.h>
 #include <mapmem.h>
 #include <net.h>
+#include <net-common.h>
 #include <asm/global_data.h>
 #include <linux/errno.h>
 
@@ -22,13 +26,6 @@ DECLARE_GLOBAL_DATA_PTR;
  * RAM.
  */
 struct sysinfo_t lib_sysinfo __section(".data");
-
-/*
- * Some of this is x86 specific, and the rest of it is generic. Right now,
- * since we only support x86, we'll avoid trying to make lots of infrastructure
- * we don't need. If in the future, we want to use coreboot on some other
- * architecture, then take out the generic parsing code and move it elsewhere.
- */
 
 /* === Parsing code === */
 /* This is the generic parsing code */
@@ -146,6 +143,16 @@ static void cb_parse_acpi_gnvs(unsigned char *ptr, struct sysinfo_t *info)
 	struct cb_cbmem_tab *const cbmem = (struct cb_cbmem_tab *)ptr;
 
 	info->acpi_gnvs = map_sysmem(cbmem->cbmem_tab, 0);
+}
+
+static void cb_parse_board_config(unsigned char *ptr, struct sysinfo_t *info)
+{
+	struct cb_board_config *const cbbcfg = (struct cb_board_config *)ptr;
+
+	info->board_id = cbbcfg->board_id;
+	info->ram_code = cbbcfg->ram_code;
+	info->sku_id = cbbcfg->sku_id;
+	info->fw_config = cbbcfg->fw_config;
 }
 
 static void cb_parse_board_id(unsigned char *ptr, struct sysinfo_t *info)
@@ -302,6 +309,8 @@ static int cb_parse_header(void *addr, int len, struct sysinfo_t *info)
 	 */
 	info->board_id = ~0;
 	info->ram_code = ~0;
+	info->sku_id = ~0;
+	info->fw_config = ~0ULL;
 
 	/* Now, walk the tables */
 	ptr += header->header_bytes;
@@ -402,6 +411,9 @@ static int cb_parse_header(void *addr, int len, struct sysinfo_t *info)
 		case CB_TAG_CBMEM_ENTRY:
 			cb_parse_cbmem_entry(ptr, info);
 			break;
+		case CB_TAG_BOARD_CONFIG:
+			cb_parse_board_config(ptr, info);
+			break;
 		case CB_TAG_BOARD_ID:
 			cb_parse_board_id(ptr, info);
 			break;
@@ -453,8 +465,18 @@ static int cb_parse_header(void *addr, int len, struct sysinfo_t *info)
 	return 1;
 }
 
-/* == Architecture specific == */
-/* This is the x86 specific stuff */
+long detect_coreboot_table_at(ulong start, ulong size)
+{
+	u32 *ptr, *end;
+
+	size /= 4;
+	for (ptr = (void *)start, end = ptr + size; ptr < end; ptr += 4) {
+		if (*ptr == 0x4f49424c) /* "LBIO" */
+			return (long)ptr;
+	}
+
+	return -ENOENT;
+}
 
 int get_coreboot_info(struct sysinfo_t *info)
 {
@@ -470,9 +492,20 @@ int get_coreboot_info(struct sysinfo_t *info)
 	if (!ret)
 		return -ENOENT;
 	gd->arch.coreboot_table = addr;
-	gd_set_acpi_start(map_to_sysmem(info->rsdp));
-	gd_set_smbios_start(info->smbios_start);
 	gd->flags |= GD_FLG_SKIP_LL_INIT;
+
+	timestamp_init();
+
+	return 0;
+}
+
+int coreboot_early_init(void)
+{
+	int ret;
+
+	ret = get_coreboot_info(&lib_sysinfo);
+	if (ret != 0)
+		debug("Failed to parse coreboot tables.\n");
 
 	return 0;
 }
@@ -484,3 +517,235 @@ const struct sysinfo_t *cb_get_sysinfo(void)
 
 	return NULL;
 }
+
+#if CONFIG_IS_ENABLED(OF_LIBFDT)
+void fdt_fixup_coreboot(void *blob)
+{
+	char node[32];
+	int  nodeoffset;	/* node offset from libfdt */
+	u32 addr_cells_root;
+	u32 size_cells_root;
+	u32 addr_cells;
+	u32 size_cells;
+	u64 header_addr;
+	u64 header_size;
+	u64 cbmem_addr;
+	u64 cbmem_size;
+	int i;
+	const struct memrange *cbmem_range = NULL;
+
+	if (!gd->arch.coreboot_table)
+		return;
+
+	for (i = 0; i < lib_sysinfo.n_memranges; i++) {
+		const struct memrange *memrange = &lib_sysinfo.memrange[i];
+
+		if (memrange->type == CB_MEM_TABLE) {
+			cbmem_range = memrange;
+			break;
+		}
+	}
+
+	if (!cbmem_range) {
+		log_err("Missing cbmem table\n");
+		return;
+	}
+
+	nodeoffset = fdt_path_offset(blob, "/");
+	if (nodeoffset < 0) {
+		/* Not found or something else bad happened. */
+		log_err("fdt_path_offset() returned %s\n", fdt_strerror(nodeoffset));
+		return;
+	}
+	addr_cells_root = fdt_getprop_u32_default_node(blob, nodeoffset, 0, "#address-cells", 2);
+	size_cells_root = fdt_getprop_u32_default_node(blob, nodeoffset, 0, "#size-cells", 2);
+
+	nodeoffset = fdt_find_or_add_subnode(blob, nodeoffset, "firmware");
+	if (nodeoffset < 0) {
+		log_err("Add 'firmware' node failed: %s\n", fdt_strerror(nodeoffset));
+		return;
+	}
+
+	addr_cells = fdt_getprop_u32_default_node(blob, nodeoffset, 0,
+						  "#address-cells", addr_cells_root);
+	size_cells = fdt_getprop_u32_default_node(blob, nodeoffset, 0,
+						  "#size-cells", size_cells_root);
+	fdt_setprop_u32(blob, nodeoffset, "#address-cells", addr_cells);
+	fdt_setprop_u32(blob, nodeoffset, "#size-cells", size_cells);
+
+	fdt_setprop_empty(blob, nodeoffset, "ranges");
+
+	header_addr = (u64)lib_sysinfo.header;
+	header_size = lib_sysinfo.header->header_bytes + lib_sysinfo.header->table_bytes;
+
+	sprintf(node, "coreboot@%llx", header_addr);
+	nodeoffset = fdt_add_subnode(blob, nodeoffset, node);
+	if (nodeoffset < 0) {
+		log_err("Add '%s' node failed: %s\n", node, fdt_strerror(nodeoffset));
+		return;
+	}
+
+	fdt_setprop_string(blob, nodeoffset, "compatible", "coreboot");
+
+	if (addr_cells == 1) {
+		fdt_setprop_u32(blob, nodeoffset, "reg", header_addr);
+	} else if (addr_cells == 2) {
+		fdt_setprop_u64(blob, nodeoffset, "reg", header_addr);
+	} else {
+		log_err("Unsupported #address-cells: %u\n", addr_cells);
+		goto clean_coreboot;
+	}
+
+	if (size_cells == 1) {
+		fdt_appendprop_u32(blob, nodeoffset, "reg", header_size);
+	} else if (size_cells == 2) {
+		fdt_appendprop_u64(blob, nodeoffset, "reg", header_size);
+	} else {
+		log_err("Unsupported #size-cells: %u\n", addr_cells);
+		goto clean_coreboot;
+	}
+
+	cbmem_addr = cbmem_range->base;
+	cbmem_size = cbmem_range->size;
+
+	if (addr_cells == 1) {
+		fdt_appendprop_u32(blob, nodeoffset, "reg", cbmem_addr);
+	} else if (addr_cells == 2) {
+		fdt_appendprop_u64(blob, nodeoffset, "reg", cbmem_addr);
+	} else {
+		log_err("Unsupported #address-cells: %u\n", addr_cells);
+		goto clean_coreboot;
+	}
+
+	if (size_cells == 1) {
+		fdt_appendprop_u32(blob, nodeoffset, "reg", cbmem_size);
+	} else if (size_cells == 2) {
+		fdt_appendprop_u64(blob, nodeoffset, "reg", cbmem_size);
+	} else {
+		log_err("Unsupported #size-cells: %u\n", addr_cells);
+		goto clean_coreboot;
+	}
+
+	fdt_setprop_u32(blob, nodeoffset, "board-id", lib_sysinfo.board_id);
+	fdt_setprop_u32(blob, nodeoffset, "sku-id", lib_sysinfo.sku_id);
+	fdt_setprop_u32(blob, nodeoffset, "ram-code", lib_sysinfo.ram_code);
+	if (lib_sysinfo.fw_config != ~0ULL)
+		fdt_setprop_u64(blob, nodeoffset, "fw-config", lib_sysinfo.fw_config);
+
+clean_coreboot:
+	fdt_del_node_and_alias(blob, node);
+}
+#endif
+
+/*
+ * Parse the length header that is 7 bits of length and a top bit indicating
+ * "more" to the length.
+ *
+ * |  7   | 6   5   4  3  2  1   0 |
+ * |------+------------------------|
+ * | more |        length          |
+ *
+ * The "more" bit indicates the next byte after this one has more lower
+ * significant 7 bits. This can be repeated multiple times to make long keys or
+ * values.
+ */
+static unsigned int vpd_cbmem_parse_len(const u8 *blob, unsigned int i,
+					unsigned int *start, unsigned int *_len)
+{
+	u8 more;
+	unsigned int len = 0;
+
+	do {
+		more = blob[i] & 0x80;
+		len <<= 7;
+		len |= blob[i] & 0x7f;
+		i++;
+	} while (more);
+
+	*_len = len;
+	*start = i;
+
+	return i + len;
+}
+
+unsigned int vpd_cbmem_parse_key_value(const u8 *blob, unsigned int offset,
+		unsigned int *key_offset, unsigned int *key_len,
+		unsigned int *val_offset, unsigned int *val_len)
+{
+	offset = vpd_cbmem_parse_len(blob, offset, key_offset, key_len);
+
+	return vpd_cbmem_parse_len(blob, offset, val_offset, val_len);
+}
+
+static unsigned int coreboot_set_one(const u8 *blob, unsigned int i)
+{
+	unsigned int vpd_type = blob[i++];
+	unsigned int key_offset;
+	unsigned int key_len;
+	unsigned int val_offset;
+	unsigned int val_len;
+	const u8 *key;
+	const u8 *val;
+
+	/* We only care about strings that may contain keys we can use */
+	if (vpd_type != VPD_TYPE_INFO && vpd_type != VPD_TYPE_STRING)
+		return i;
+
+	/* Conntinue to move 'i' forward through the VPD blob */
+	i = vpd_cbmem_parse_key_value(blob, i, &key_offset, &key_len, &val_offset, &val_len);
+	if (vpd_type != VPD_TYPE_STRING)
+		return i;
+
+	key = blob + key_offset;
+	val = blob + val_offset;
+
+	if (!strncmp(key, "serial_number", key_len)) {
+		unsigned char serialno[64];
+
+		if (val_len > ARRAY_SIZE(serialno))
+			val_len = ARRAY_SIZE(serialno);
+
+		strncpy(serialno, val, val_len);
+		env_set("serial#", serialno);
+	} else if (!strncmp(key, "wifi_mac0", key_len)) {
+		u8 buf[ARP_HLEN_ASCII + 1];
+		unsigned char ethaddr[6];
+
+		if (!eth_env_get_enetaddr("wifiaddr", ethaddr)) {
+			strncpy(buf, val, val_len);
+			string_to_enetaddr(buf, ethaddr);
+			eth_env_set_enetaddr("wifiaddr", ethaddr);
+		}
+	}
+
+	return i;
+}
+
+/*
+ * Set environment variables based on the contents of VPD.
+ */
+static int coreboot_settings_r(void)
+{
+	const struct sysinfo_t *sysinfo;
+	const struct vpd_cbmem *vpd;
+	unsigned int i = 0;
+	unsigned int len;
+	const u8 *blob;
+
+	sysinfo = cb_get_sysinfo();
+	if (!sysinfo)
+		return 0;
+
+	vpd = sysinfo->chromeos_vpd;
+	if (!vpd)
+		return 0;
+
+	len = vpd->ro_size;
+	blob = vpd->blob;
+
+	while (i < len)
+		i = coreboot_set_one(blob, i);
+
+	return 0;
+}
+EVENT_SPY_SIMPLE(EVT_SETTINGS_R, coreboot_settings_r);

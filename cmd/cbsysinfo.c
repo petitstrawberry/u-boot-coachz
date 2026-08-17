@@ -4,7 +4,7 @@
  * Written by Simon Glass <sjg@chromium.org>
  */
 
-#include <asm/cb_sysinfo.h>
+#include <cb_sysinfo.h>
 #include <command.h>
 #include <console.h>
 #include <asm/global_data.h>
@@ -224,7 +224,7 @@ static void show_option_table(const struct cb_cmos_option_table *tab)
 	const void *ptr, *end;
 
 	print_ptr("option_table", tab);
-	if (!tab->size)
+	if (!tab || !tab->size)
 		return;
 
 	printf(" Bit  Len  Cfg  ID  Name\n");
@@ -418,6 +418,8 @@ static void show_table(struct sysinfo_t *info, bool verbose)
 	print_ptr("MRC cache", info->mrc_cache);
 	print_ptr("ACPI GNVS", info->acpi_gnvs);
 	print_hex("Board ID", info->board_id);
+	print_hex("SKU ID", info->sku_id);
+	print_addr64("FWCONFIG", info->fw_config);
 	print_hex("RAM code", info->ram_code);
 	print_ptr("WiFi calib", info->wifi_calibration);
 	print_addr64("Ramoops buff", info->ramoops_buffer);
@@ -434,6 +436,40 @@ static void show_table(struct sysinfo_t *info, bool verbose)
 	print_hex("MTC size", info->mtc_size);
 
 	print_ptr("Chrome OS VPD", info->chromeos_vpd);
+	if (info->chromeos_vpd) {
+		struct vpd_cbmem *vpd = info->chromeos_vpd;
+
+		print_hex("RO size", vpd->ro_size);
+		print_hex("RW size", vpd->rw_size);
+
+		unsigned int i = 0;
+		unsigned int len = vpd->ro_size;
+		const u8 *blob = vpd->blob;
+
+		while (i < len) {
+			unsigned int vpd_type = blob[i];
+
+			switch (vpd_type) {
+			case VPD_TYPE_INFO:
+			case VPD_TYPE_STRING:
+				i++;
+				unsigned int key_offset;
+				unsigned int key_len;
+				unsigned int val_offset;
+				unsigned int val_len;
+
+				i = vpd_cbmem_parse_key_value(blob, i, &key_offset, &key_len, &val_offset, &val_len);
+				if (vpd_type == VPD_TYPE_STRING)
+					printf("  \"%.*s\" = \"%.*s\"\n", key_len, blob + key_offset, val_len, blob + val_offset);
+
+				break;
+			default:
+				i++;
+				break;
+			}
+		}
+	}
+
 	print_ptr("RSDP", info->rsdp);
 	printf("%-12s: ", "Unimpl.");
 	if (info->unimpl_count) {

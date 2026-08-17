@@ -5,6 +5,8 @@
  * Graeme Russ, graeme.russ@gmail.com.
  */
 
+#include <cb_sysinfo.h>
+#include <coreboot_timestamp.h>
 #include <cpu_func.h>
 #include <event.h>
 #include <fdtdec.h>
@@ -14,26 +16,22 @@
 #include <asm/io.h>
 #include <asm/msr.h>
 #include <asm/mtrr.h>
-#include <asm/cb_sysinfo.h>
-#include <asm/arch/timestamp.h>
 #include <dm/ofnode.h>
 
 int arch_cpu_init(void)
 {
-	int ret;
-
-	ret = IS_ENABLED(CONFIG_X86_64) ? x86_cpu_reinit_f() :
+	int ret = IS_ENABLED(CONFIG_X86_64) ? x86_cpu_reinit_f() :
 		x86_cpu_init_f();
 	if (ret)
 		return ret;
 
-	ret = get_coreboot_info(&lib_sysinfo);
-	if (ret != 0) {
-		printf("Failed to parse coreboot tables.\n");
-		return ret;
+	if (!gd->arch.coreboot_table) {
+		printf("Failed to locate coreboot tables.\n");
+		return -ENOENT;
 	}
 
-	timestamp_init();
+	gd_set_acpi_start(map_to_sysmem(lib_sysinfo.rsdp));
+	gd_set_smbios_start(lib_sysinfo.smbios_start);
 
 	return 0;
 }
@@ -72,8 +70,6 @@ static void board_final_init(void)
 
 static int last_stage_init(void)
 {
-	timestamp_add_to_bootstage();
-
 	if (IS_ENABLED(CONFIG_XPL_BUILD))
 		return 0;
 

@@ -438,6 +438,17 @@ struct cb_tsc_info {
 #define CB_TAG_SERIALNO			0x002a
 #define CB_MAX_SERIALNO_LENGTH		32
 
+#define CB_TAG_BOARD_CONFIG		0x0040
+struct cb_board_config {
+	u32 tag;
+	u32 size;
+
+	u64 fw_config;
+	u32 board_id;
+	u32 ram_code;
+	u32 sku_id;
+};
+
 #define CB_TAG_ACPI_RSDP		0x0043
 
 #define CB_TAG_CMOS_OPTION_TABLE	0x00c8
@@ -539,6 +550,19 @@ struct cbmem_entry {
 #define CBMEM_ID_MRCDATA		0x4d524344
 #define CBMEM_ID_CONSOLE		0x434f4e53
 #define CBMEM_ID_NONE			0x00000000
+
+struct vpd_cbmem {
+	u32 magic;
+	u32 version;
+	u32 ro_size;
+	u32 rw_size;
+	u8 blob[];
+};
+
+#define VPD_TYPE_TERMINATOR		0x00
+#define VPD_TYPE_STRING			0x01
+#define VPD_TYPE_INFO			0xfe
+#define VPD_TYPE_IMPLICIT_TERMINATOR	0xff
 
 /**
  * high_table_reserve() - reserve configuration table in high memory

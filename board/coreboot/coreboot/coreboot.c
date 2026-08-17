@@ -6,7 +6,7 @@
 #include <splash.h>
 #include <init.h>
 #include <smbios.h>
-#include <asm/cb_sysinfo.h>
+#include <cb_sysinfo.h>
 
 int board_early_init_r(void)
 {
